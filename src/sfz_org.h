@@ -86,6 +86,7 @@ class zo_orga;
 //using zo_sample_pt = std::shared_ptr<zo_sample>;
 
 enum class zo_action {
+	nothing,
 	move,
 	copy,
 	purge,
@@ -108,6 +109,8 @@ is_move_oper(zo_action act){
 		case zo_action::move: 
 			return true;
 		case zo_action::copy: 
+			return false;
+		default:
 			return false;
 	}
 	return false;
@@ -293,9 +296,11 @@ public:
 		if(it != all_orig_sfz.end()){
 			zo_sfont_pt sfz = it->second;
 			ZO_CK(sfz != zo_null);
+			//std::cout << "already added " << pth << "\n";
 			return sfz;
 		}
   
+		std::cout << "adding " << pth << "\n";
 		is_nw = true;
 		zo_sfont_pt nw_sfz = make_sfont_pt(pth);
 		all_orig_sfz[pth] = nw_sfz;
@@ -313,9 +318,11 @@ public:
 		if(it != all_orig_spl.end()){
 			zo_sample_pt spl = it->second;
 			ZO_CK(spl != zo_null);
+			//std::cout << "already added " << pth << "\n";
 			return spl;
 		}
   
+		std::cout << "adding " << pth << "\n";
 		is_nw = true;
 		zo_sample_pt nw_spl = make_sample_pt(pth);
 		all_orig_spl[pth] = nw_spl;
@@ -375,7 +382,7 @@ public:
 	zo_path  dir_to{""};	// to option
 	zo_string match_str{""};	// match option
 	zo_string subst_str{""}; // substitute option
-	zo_action oper{zo_action::purge};
+	zo_action oper{zo_action::nothing};
 	
 	zo_string tmp_nam{".temp_sfz_organizer_file"};
 	zo_path tmp_pth{""};
@@ -389,7 +396,7 @@ public:
 		fprintf(stdout, "Calling ~zo_orga\n");
 	}
 	
-	bool get_args(zo_str_vec& args);
+	bool get_args(const zo_str_vec& args);
 	
 	bool is_move(){
 		return is_move_oper(oper);
@@ -407,7 +414,7 @@ public:
 	}
 	
 	void prepare_fix();
-	void organizer_main();
+	void organizer_main(const zo_str_vec& args);
 };
 
 #endif		// SFZ_ORG_H

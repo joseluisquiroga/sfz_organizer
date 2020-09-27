@@ -14,18 +14,19 @@
 #include "is_utf8.h"
 #include "sfz_org.h"
 
+void
+print_version(const zo_str_vec& args){
+	fprintf(stdout, "%s 0.1\n", args[0].c_str());
+}
+
 
 zo_string ZO_INC_PATTERN_STR = "^f([[:digit:]]*)_";
 std::regex ZO_INC_PATTERN{ZO_INC_PATTERN_STR.c_str()};
 
 int sfz_organizer_main(int argc, char* argv[]){
 	zo_str_vec args{argv, argv + argc};
-	
 	zo_orga org;
-	if(! org.get_args(args)){
-		return -1;
-	}
-	org.organizer_main();
+	org.organizer_main(args);
 	return 0;
 }
 
@@ -52,11 +53,6 @@ inc_name(zo_string& nm){
 	return;
 }
 
-
-void
-print_version(zo_str_vec& args){
-	fprintf(stdout, "%s 0.1\n", args[0].c_str());
-}
 
 zo_string ZO_SFZ_EXT = ".sfz";
 zo_string ZO_SAMPLE_STR = "sample";
@@ -308,16 +304,15 @@ read_file(const zo_path& pth, zo_dir& dir){
 	if(! fs::exists(pth)){
 		return;
 	}
-	std::cout << "reading:" << pth << "\n";
+	std::cout << "selecting:" << pth << "\n";
 	auto apth = zo_path{fs::canonical(pth)};
+	bool is_nw = false;
 	if(has_sfz_ext(pth)){
-		bool is_nw = false;
 		zo_sfont_pt sf = dir.get_orig_soundfont(apth, is_nw);
 		if(is_nw){
 			sfz_get_samples(sf, dir);
 		}
 	} else {
-		bool is_nw = false;
 		auto ec = std::error_code{};
 		dir.get_orig_sample(apth, is_nw, ec);
 		dir.tot_selected_spl++;
@@ -350,7 +345,20 @@ read_dir_files(zo_path pth_dir, zo_dir& dir, const bool only_sfz, const bool fol
 }
 
 void 
+fill_files(const zo_path& pth_dir, zo_str_vec& names){
+	ZO_CK(fs::exists(pth_dir));
+	ZO_CK(fs::is_directory(pth_dir));
+	for (const auto& entry : fs::directory_iterator(pth_dir)){
+		zo_path pth = entry.path();
+		names.push_back(pth);
+	}
+}
+
+void 
 zo_orga::read_files(zo_dir& dir, bool only_sfz, bool follw_symlk){
+	if(f_names.empty()){
+		fill_files(dir_from, f_names);
+	}
 	for(auto nm : f_names){
 		zo_path f_pth = nm;
 		if(! fs::exists(f_pth)){
@@ -371,8 +379,8 @@ zo_orga::read_files(zo_dir& dir, bool only_sfz, bool follw_symlk){
 		} 
 	}
 	//fprintf(stdout, "basic reading Ok\n");
+	fprintf(stdout, "tot_selected_samples = %ld\n", dir.tot_selected_spl);
 	if(dir.tot_selected_spl > 0){
-		fprintf(stdout, "tot_selected_samples = %ld\n", dir.tot_selected_spl);
 		ZO_CK(! dir.base_pth.empty());
 		read_dir_files(dir.base_pth, dir, true, follw_symlk);
 	}
@@ -438,11 +446,11 @@ int test_rx(int argc, char* argv[]){
 }
 
 void
-print_help(zo_str_vec& args){
-	zo_string& prg_nm = args[0];
+print_help(const zo_str_vec& args){
+	const zo_string& prg_nm = args[0];
 	fprintf(stdout, 
 	R"help(%s [OPTION] ... [FILE] ...
-	The pourpose of %s is to do move and copy operations of sfz soundfonts while preserving consistency of any referenced sample file within them.
+	The purpose of %s is to move and copy sfz soundfonts while preserving consistency of any referenced sample within them.
 	Options:
 	-l --list
 		Just print what it would do without actualy doing it.
@@ -507,7 +515,7 @@ print_help(zo_str_vec& args){
 }
 
 bool
-zo_orga::get_args(zo_str_vec& args){
+zo_orga::get_args(const zo_str_vec& args){
 	ZO_CK(! args.empty());
 	
 	if(args.size() < 2){
@@ -612,6 +620,10 @@ zo_orga::get_args(zo_str_vec& args){
 	
 	base_pth = dir_from;
 	tmp_pth = base_pth / tmp_nam;
+	
+	if(oper == zo_action::nothing){
+		just_list = true;
+	}
 	
 	return true;
 }
@@ -890,9 +902,31 @@ zo_ref::print_lines(std::ofstream& dst, const zo_string& ln){
 }
 
 void
-zo_orga::organizer_main(){
+zo_orga::organizer_main(const zo_str_vec& args){
+	fprintf(stderr, "organizer_main\n");
+	if(! get_args(args)){
+		fprintf(stderr, "not enough args\n");
+		return;
+	}
+	std::cout << "Starting\n";
+	if(just_list){
+		std::cout << "just_list\n";
+	}
+	
 	zo_orga& org = *this;
 	read_files();
-	print_actions(org);
+	
+	if(oper == zo_action::fix){
+		prepare_fix();
+	}
+	
+	if(just_list){
+		std::cout << "just_list\n";
+		print_actions(org);
+		return;
+	}
+	
+	ZO_CK(oper != zo_action::nothing);
+	do_actions(org);
 }
 
