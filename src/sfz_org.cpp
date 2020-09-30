@@ -32,10 +32,14 @@ int sfz_organizer_main(int argc, char* argv[]){
 
 void
 fix_name(zo_string& nm){
+	std::size_t pos = nm.rfind('.');
 	for(char& ch : nm){
 		if(! isalnum(ch)){
 			ch = '_';
 		}
+	}
+	if(pos != std::string::npos){
+		nm[pos] = '.';
 	}
 }
 
@@ -138,7 +142,7 @@ zo_ref::get_orig_rel(){
 	zo_path rf_pnt = rf_pth.parent_path();
 	
 	std::error_code ec;
-	zo_path rel_pth = find_relative(rf_pnt, sf_pnt, ec);
+	zo_path rel_pth = find_relative(rf_pnt, sf_pnt, ec) / rf_pth.filename();
 	ZO_CK(! ec);
 	return rel_pth;
 }
@@ -154,7 +158,7 @@ zo_ref::get_next_rel(){
 	zo_path rf_pnt = rf_pth.parent_path();
 	
 	std::error_code ec;
-	zo_path rel_pth = find_relative(rf_pnt, sf_pnt, ec);
+	zo_path rel_pth = find_relative(rf_pnt, sf_pnt, ec) / rf_pth.filename();
 	ZO_CK(! ec);
 	return rel_pth;
 }
@@ -266,15 +270,26 @@ sfz_get_samples(zo_sfont_pt fl, zo_dir& dir){
 		auto ec = std::error_code{};
 		zo_path fx_ref = fix_ref_path(lref, fl->get_orig(), ec);
 		
+		if(ec){
+			dir.bad_spl->all_bk_ref.push_back(fl);
+			continue;
+		}
+		
 		//fprintf(stdout, "rpth:'%s'\n", rpth.c_str());
 		//fprintf(stdout, "pnt:'%s'\n", pnt.c_str());
 		
 		bool is_nw = false;
-		zo_sample_pt spl = dir.get_orig_sample(fx_ref, is_nw, ec);
-		
+		zo_sample_pt spl = dir.get_read_sample(fx_ref, is_nw);
+		ZO_CK(spl != zo_null);		
 		ZO_CK(spl->get_orig() == fx_ref);
 		
 		spl->all_bk_ref.push_back(fl);
+		
+		zo_sample_pt sspl = dir.get_selected_sample(fx_ref, spl, is_nw, false);
+		if(sspl == zo_null){
+			continue;
+		}
+		ZO_CK(sspl == spl);
 
 		auto nw_ref = make_ref_pt(fl, lnum, spl);
 		nw_ref->prefix = lprefix;
@@ -300,28 +315,36 @@ has_sfz_ext(const zo_path& pth){
 }
 
 void 
-read_file(const zo_path& pth, zo_dir& dir){
+read_file(const zo_path& pth, zo_dir& dir, const zo_ftype ft, const bool only_with_ref){
+	ZO_CK(! only_with_ref || (ft == zo_ftype::soundfont));
 	if(! fs::exists(pth)){
 		return;
 	}
-	std::cout << "selecting:" << pth << "\n";
 	auto apth = zo_path{fs::canonical(pth)};
 	bool is_nw = false;
-	if(has_sfz_ext(pth)){
-		zo_sfont_pt sf = dir.get_orig_soundfont(apth, is_nw);
+	bool is_sfz = has_sfz_ext(pth);
+	if((ft == zo_ftype::soundfont) && is_sfz){
+		zo_sfont_pt sf = dir.get_read_soundfont(apth, is_nw);
 		if(is_nw){
 			sfz_get_samples(sf, dir);
 		}
-	} else {
-		auto ec = std::error_code{};
-		dir.get_orig_sample(apth, is_nw, ec);
+		bool has_ref = ! sf->all_ref.empty();
+		if(! only_with_ref || has_ref){
+			dir.get_selected_soundfont(apth, sf, is_nw);
+		}
+	}
+	if((ft == zo_ftype::sample) && ! is_sfz){
+		zo_sample_pt sp = dir.get_read_sample(apth, is_nw);
+		ZO_CK(sp != zo_null);
+		sp->selected = true;
 		dir.tot_selected_spl++;
+		dir.get_selected_sample(apth, sp, is_nw, true);
 	}
 }
 
 
 void 
-read_dir_files(zo_path pth_dir, zo_dir& dir, const bool only_sfz, const bool follw_symlk){
+read_dir_files(zo_path pth_dir, zo_dir& dir, const zo_ftype ft, const bool only_with_ref, const bool follw_symlk){
 	if(fs::is_symlink(pth_dir)){
 		pth_dir = fs::read_symlink(pth_dir);
 	}
@@ -331,14 +354,10 @@ read_dir_files(zo_path pth_dir, zo_dir& dir, const bool only_sfz, const bool fol
 			auto st = entry.status();
 			if(fs::is_directory(st)){
 				if(follw_symlk || ! fs::is_symlink(pth)){
-					read_dir_files(entry, dir, only_sfz, follw_symlk);
+					read_dir_files(entry, dir, ft, only_with_ref, follw_symlk);
 				}
 			} else if(fs::is_regular_file(st)){
-				if(! only_sfz || has_sfz_ext(pth)){
-					read_file(pth, dir);
-				} else {
-					std::cout << "skipping:" << pth << "\n";
-				}
+				read_file(pth, dir, ft, only_with_ref);
 			} 
 		}
 	}
@@ -355,34 +374,37 @@ fill_files(const zo_path& pth_dir, zo_str_vec& names){
 }
 
 void 
-zo_orga::read_files(zo_dir& dir, bool only_sfz, bool follw_symlk){
-	if(f_names.empty()){
-		fill_files(dir_from, f_names);
-	}
-	for(auto nm : f_names){
+read_files(const zo_str_vec& all_pth, const zo_ftype ft, zo_dir& dir, bool is_recu, bool follw_symlk){
+	for(auto nm : all_pth){
 		zo_path f_pth = nm;
 		if(! fs::exists(f_pth)){
 			continue;
 		}
-		//fprintf(stdout, "reading %s\n", nm.c_str());
 		if(fs::is_directory(f_pth)){
-			if(! recursive){
+			if(! is_recu){
 				continue;
 			}
-			read_dir_files(f_pth, dir, only_sfz, follw_symlk);
+			read_dir_files(f_pth, dir, ft, false, follw_symlk);
 		} else if(fs::is_regular_file(f_pth)){
-			if(only_sfz && ! has_sfz_ext(f_pth)){
-				std::cout << "skipping:" << f_pth << "\n";
-				continue;
-			}
-			read_file(f_pth, dir);
+			read_file(f_pth, dir, ft, false);
 		} 
 	}
+}
+
+void 
+zo_orga::read_selected(zo_dir& dir, bool only_sfz, bool follw_symlk){
+	if(f_names.empty()){
+		fill_files(dir_from, f_names);
+	}
+	if(! only_sfz){
+		read_files(f_names, zo_ftype::sample, dir, recursive, follw_symlk);
+	}
+	read_files(f_names, zo_ftype::soundfont, dir, recursive, follw_symlk);
 	//fprintf(stdout, "basic reading Ok\n");
 	fprintf(stdout, "tot_selected_samples = %ld\n", dir.tot_selected_spl);
 	if(dir.tot_selected_spl > 0){
 		ZO_CK(! dir.base_pth.empty());
-		read_dir_files(dir.base_pth, dir, true, follw_symlk);
+		read_dir_files(dir.base_pth, dir, zo_ftype::soundfont, true, follw_symlk);
 	}
 	//fprintf(stdout, "recu reading Ok\n");
 }
@@ -409,7 +431,7 @@ int test_fs(int argc, char* argv[]){
 	}
 	
 	zo_dir dir;
-	read_dir_files(pth1, dir, true, false);
+	read_dir_files(pth1, dir, zo_ftype::soundfont, false, false);
 	
 	return 0;
 }
@@ -620,6 +642,7 @@ zo_orga::get_args(const zo_str_vec& args){
 	
 	base_pth = dir_from;
 	tmp_pth = base_pth / tmp_nam;
+	fs::create_directories(tmp_pth.parent_path());
 	
 	if(oper == zo_action::nothing){
 		just_list = true;
@@ -643,16 +666,16 @@ void
 zo_ref::print_actions(zo_orga& org){
 	fprintf(stdout, "----------\n");
 	if(! bad_pth.empty()){
-		fprintf(stdout, "BAD REFERENCE SKIPPED '%s'\n", bad_pth.c_str());
+		fprintf(stdout, "BAD_REFERENCE_SKIPPED '%s'\n", bad_pth.c_str());
 		return;
 	}
-	fprintf(stdout, "orig sample: %s\n", get_orig().c_str());
-	fprintf(stdout, "orig rel sample: %s\n", get_orig_rel().c_str());
+	fprintf(stdout, "original_sample: %s\n", get_orig().c_str());
+	fprintf(stdout, "original_rel_sample: %s\n", get_orig_rel().c_str());
 	if(get_next().empty()){
-		fprintf(stdout, "KEEPING ORIG LINE %ld\n", num_line);
+		fprintf(stdout, "KEEPING_ORIG_LINE %ld\n", num_line);
 		return;
 	}
-	fprintf(stdout, "replace line %ld with:\n", num_line);
+	fprintf(stdout, "replace_line %ld with:\n", num_line);
 	if(! prefix.empty()){
 		fprintf(stdout, "%s\n", prefix.c_str());
 	}
@@ -682,11 +705,11 @@ zo_sample::print_actions(zo_orga& org){
 
 void
 zo_dir::print_actions(zo_orga& org){
-	for(const auto& sfe : all_orig_sfz){
+	for(const auto& sfe : all_selected_sfz){
 		zo_sfont_pt sf = sfe.second;
 		sf->print_actions(org);
 	}
-	for(const auto& sme : all_orig_spl){
+	for(const auto& sme : all_selected_spl){
 		zo_sample_pt sm = sme.second;
 		sm->print_actions(org);
 	}
@@ -747,11 +770,11 @@ zo_sample::prepare_fix(zo_dir& dir){
 void
 zo_orga::prepare_fix(){
 	zo_dir& dir = *this; 
-	for(const auto& sfe : all_orig_sfz){
+	for(const auto& sfe : all_selected_sfz){
 		zo_sfont_pt sf = sfe.second;
 		sf->prepare_fix(dir);
 	}
-	for(const auto& sme : all_orig_spl){
+	for(const auto& sme : all_selected_spl){
 		zo_sample_pt sm = sme.second;
 		sm->prepare_fix(dir);
 	}
@@ -827,11 +850,11 @@ zo_sample::do_actions(zo_orga& org){
 
 void 
 zo_dir::do_actions(zo_orga& org){
-	for(const auto& sfe : all_orig_sfz){
+	for(const auto& sfe : all_selected_sfz){
 		zo_sfont_pt sf = sfe.second;
 		sf->do_actions(org);
 	}
-	for(const auto& sme : all_orig_spl){
+	for(const auto& sme : all_selected_spl){
 		zo_sample_pt sm = sme.second;
 		sm->do_actions(org);
 	}
@@ -839,6 +862,11 @@ zo_dir::do_actions(zo_orga& org){
 
 void
 zo_sfont::prepare_tmp_file(const zo_path& tmp_pth){
+	if(all_ref.empty()){
+		fs::copy(get_orig(), tmp_pth);
+		return;
+	}
+	
 	std::ifstream src;
 	src.open(get_orig().c_str(), std::ios::binary);
 	if(! src.good() || ! src.is_open()){
@@ -871,11 +899,15 @@ zo_sfont::prepare_tmp_file(const zo_path& tmp_pth){
 		ZO_CK(it != all_ref.end());
 		zo_ref_pt rf = *it;
 		ZO_CK(rf != zo_null);
-		if(rf->num_line != lnum){
+		if(rf->num_line > lnum){
+			dst << ln << '\n';
+			continue;
+		}
+		if(rf->num_line < lnum){
 			throw sfz_exception(sfz_read_1_and_2_differ, get_orig());
 		}
+			
 		it++;
-
 		rf->print_lines(dst, ln);
 	}
 	
@@ -914,7 +946,7 @@ zo_orga::organizer_main(const zo_str_vec& args){
 	}
 	
 	zo_orga& org = *this;
-	read_files();
+	read_selected();
 	
 	if(oper == zo_action::fix){
 		prepare_fix();

@@ -99,6 +99,11 @@ enum class zo_policy {
 	keep
 };
 
+enum class zo_ftype {
+	soundfont,
+	sample
+};
+
 inline
 bool
 is_move_oper(zo_action act){
@@ -127,6 +132,9 @@ public:
 
 	void print_actions(zo_orga& org);
 	void fix_next();
+	void keep_same(){
+		nxt_pth = orig_pth;
+	}
 };
 
 class zo_ref {
@@ -212,6 +220,7 @@ class zo_sample {
 	zo_sample& operator = (zo_sample&& rr) = delete;
 	
 public:
+	bool 			selected{false};
 	zo_fname		fpth;
 	zo_ptsfont_vec	all_bk_ref;
 	
@@ -270,8 +279,12 @@ class zo_dir {
 
 public:
 	zo_path 			base_pth{""};
-	zo_sfont_map 		all_orig_sfz;
-	zo_sample_map 		all_orig_spl;
+	
+	zo_sfont_map 		all_read_sfz;
+	zo_sample_map 		all_read_spl;
+	
+	zo_sfont_map 		all_selected_sfz;
+	zo_sample_map 		all_selected_spl;
 	
 	zo_sfont_map 		all_nxt_sfz;
 	zo_sample_map 		all_nxt_spl;
@@ -288,45 +301,77 @@ public:
 		fprintf(stdout, "Calling ~zo_dir\n");
 	}
 	
-	zo_sfont_pt get_orig_soundfont(const zo_path& pth, bool& is_nw){
+	zo_sfont_pt get_read_soundfont(const zo_path& pth, bool& is_nw){
 		is_nw = false;
 		ZO_CK(pth.is_absolute());
 		ZO_CK(fs::exists(pth));
-		auto it = all_orig_sfz.find(pth);
-		if(it != all_orig_sfz.end()){
+		auto it = all_read_sfz.find(pth);
+		if(it != all_read_sfz.end()){
 			zo_sfont_pt sfz = it->second;
 			ZO_CK(sfz != zo_null);
 			//std::cout << "already added " << pth << "\n";
 			return sfz;
 		}
   
-		std::cout << "adding " << pth << "\n";
+		std::cout << "reading " << pth << "\n";
 		is_nw = true;
 		zo_sfont_pt nw_sfz = make_sfont_pt(pth);
-		all_orig_sfz[pth] = nw_sfz;
+		all_read_sfz[pth] = nw_sfz;
 		return nw_sfz;
 	}
 	
-	zo_sample_pt get_orig_sample(const zo_path& pth, bool& is_nw, std::error_code& ec){
+	zo_sample_pt get_read_sample(const zo_path& pth, bool& is_nw){
 		is_nw = false;
-		if(ec){
-			return bad_spl;
-		}
 		ZO_CK(pth.is_absolute());
 		ZO_CK(fs::exists(pth));
-		auto it = all_orig_spl.find(pth);
-		if(it != all_orig_spl.end()){
+		auto it = all_read_spl.find(pth);
+		if(it != all_read_spl.end()){
 			zo_sample_pt spl = it->second;
 			ZO_CK(spl != zo_null);
 			//std::cout << "already added " << pth << "\n";
 			return spl;
 		}
   
-		std::cout << "adding " << pth << "\n";
+		//std::cout << "reading " << pth << "\n";
 		is_nw = true;
 		zo_sample_pt nw_spl = make_sample_pt(pth);
-		all_orig_spl[pth] = nw_spl;
+		all_read_spl[pth] = nw_spl;
 		return nw_spl;
+	}
+	
+	zo_sfont_pt get_selected_soundfont(const zo_string& pth, zo_sfont_pt sf, bool& is_nw){
+		ZO_CK(sf != zo_null);
+		is_nw = false;
+		auto it = all_selected_sfz.find(pth);
+		if(it != all_selected_sfz.end()){
+			zo_sfont_pt sfz = it->second;
+			ZO_CK(sfz != zo_null);
+			return sfz;
+		}
+  
+		std::cout << "selecting " << pth << "\n";
+		is_nw = true;
+		all_selected_sfz[pth] = sf;
+		return sf;
+	}
+	
+	zo_sample_pt get_selected_sample(const zo_string& pth, zo_sample_pt sp, bool& is_nw, bool add_it){
+		ZO_CK(sp != zo_null);
+		is_nw = false;
+		auto it = all_selected_spl.find(pth);
+		if(it != all_selected_spl.end()){
+			zo_sample_pt spl = it->second;
+			ZO_CK(spl != zo_null);
+			return spl;
+		}
+		if(! add_it){
+			return zo_null;
+		}
+  
+		std::cout << "selecting " << pth << "\n";
+		is_nw = true;
+		all_selected_spl[pth] = sp;
+		return sp;
 	}
 	
 	zo_sfont_pt get_next_soundfont(const zo_string& pth, zo_sfont_pt sf, bool& is_nw){
@@ -402,10 +447,10 @@ public:
 		return is_move_oper(oper);
 	}
 	
-	void read_files(zo_dir& dir, bool only_sfz, bool follw_symlk);
-	void read_files(){
+	void read_selected(zo_dir& dir, bool only_sfz, bool follw_symlk);
+	void read_selected(){
 		zo_dir& dd = *this;
-		read_files(dd, only_sfz, follw_symlk);
+		read_selected(dd, only_sfz, follw_symlk);
 	}
 	
 	const zo_path& get_temp_path(){

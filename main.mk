@@ -25,7 +25,8 @@ TARGET := build/sfz_organizer
 
 TGT_LDFLAGS := -rdynamic -pthread
 
-TGT_LDLIBS := -lstdc++fs -lgmpxx -lgmp
+#TGT_LDLIBS := -lstdc++fs -lgmpxx -lgmp
+TGT_LDLIBS := -lstdc++fs
 
 #TGT_CC := clang
 #TGT_CXX := clang++
