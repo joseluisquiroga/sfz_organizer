@@ -220,10 +220,15 @@ public:
 		return fpth.nxt_pth;
 	}
 	
-	void print_actions(zo_orga& org);
+	void get_samples(zo_dir& dir);
+	
+	void print_actions(zo_orga& org);	
 	void do_actions(zo_orga& org);
 	void prepare_fix(zo_dir& dir);
 	void prepare_tmp_file(const zo_path& tmp_pth);
+	
+	void prepare_add_sfz_ext();
+	
 };
 
 using zo_ptsfont_vec = std::vector<zo_sfont_pt>;
@@ -419,7 +424,7 @@ public:
 		all_nxt_spl[pth] = sp;
 		return sp;
 	}
-	
+
 	void print_actions(zo_orga& org);
 	void do_actions(zo_orga& org);
 };
@@ -463,11 +468,11 @@ public:
 		return is_move_oper(oper);
 	}
 	
-	void read_selected(zo_dir& dir, bool only_sfz, bool follw_symlk);
-	void read_selected(){
-		zo_dir& dd = *this;
-		read_selected(dd, only_sfz, follw_symlk);
-	}
+	void read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_ref);
+	void read_dir_files(zo_path pth_dir, const zo_ftype ft, const bool only_with_ref, const bool follw_symlk);
+	
+	void read_files(const zo_str_vec& all_pth, const zo_ftype ft);
+	void read_selected();
 	
 	const zo_path& get_temp_path(){
 		ZO_CK(! tmp_pth.empty());
@@ -475,6 +480,7 @@ public:
 	}
 	
 	void prepare_fix();
+	void prepare_add_sfz_ext();
 	void organizer_main(const zo_str_vec& args);
 };
 

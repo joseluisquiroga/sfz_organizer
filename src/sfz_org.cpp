@@ -239,8 +239,9 @@ is_text_file(zo_path pth){
 	return (pos == 0);
 }
 
-int
-sfz_get_samples(zo_sfont_pt fl, zo_dir& dir){
+void
+zo_sfont::get_samples(zo_dir& dir){
+	zo_sfont_pt fl = this;
 	std::ifstream istm;
 	zo_path fl_org = fl->get_orig();
 	istm.open(fl_org.c_str(), std::ios::binary);
@@ -329,8 +330,6 @@ sfz_get_samples(zo_sfont_pt fl, zo_dir& dir){
 			fprintf(stderr, "bad_ref:'%s' in file %s\n", lref.c_str(), fl_org.c_str());
 		}
 	}
-	
-	return 0;
 }
 
 bool
@@ -343,7 +342,8 @@ has_sfz_ext(const zo_path& pth){
 }
 
 void 
-read_file(const zo_path& pth, zo_dir& dir, const zo_ftype ft, const bool only_with_ref){
+zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_ref){
+	zo_dir& dir = *this;
 	ZO_CK(! only_with_ref || (ft == zo_ftype::soundfont));
 	if(! fs::exists(pth)){
 		return;
@@ -351,28 +351,41 @@ read_file(const zo_path& pth, zo_dir& dir, const zo_ftype ft, const bool only_wi
 	auto apth = zo_path{fs::canonical(pth)};
 	bool is_nw = false;
 	bool is_sfz = has_sfz_ext(pth);
+	
+	bool adding_ext = (oper == zo_action::add_sfz);
+	if(adding_ext){
+		zo_sfont_pt sf = get_read_soundfont(apth, is_nw);
+		if(! is_sfz){
+			bool is_txt = is_text_file(apth);
+			if(is_txt){
+				get_selected_soundfont(apth, sf, is_nw);
+			}
+		}
+		return;
+	}
+	
 	if((ft == zo_ftype::soundfont) && is_sfz){
-		zo_sfont_pt sf = dir.get_read_soundfont(apth, is_nw);
+		zo_sfont_pt sf = get_read_soundfont(apth, is_nw);
 		if(is_nw){
-			sfz_get_samples(sf, dir);
+			sf->get_samples(dir);
 		}
 		bool has_ref = ! sf->all_ref.empty();
 		if(! only_with_ref || has_ref){
-			dir.get_selected_soundfont(apth, sf, is_nw);
+			get_selected_soundfont(apth, sf, is_nw);
 		}
 	}
 	if((ft == zo_ftype::sample) && ! is_sfz){
-		zo_sample_pt sp = dir.get_read_sample(apth, is_nw);
+		zo_sample_pt sp = get_read_sample(apth, is_nw);
 		ZO_CK(sp != zo_null);
 		sp->selected = true;
-		dir.tot_selected_spl++;
-		dir.get_selected_sample(apth, sp, is_nw, true);
+		tot_selected_spl++;
+		get_selected_sample(apth, sp, is_nw, true);
 	}
 }
 
 
 void 
-read_dir_files(zo_path pth_dir, zo_dir& dir, const zo_ftype ft, const bool only_with_ref, const bool follw_symlk){
+zo_orga::read_dir_files(zo_path pth_dir, const zo_ftype ft, const bool only_with_ref, const bool follw_symlk){
 	if(fs::is_symlink(pth_dir)){
 		pth_dir = fs::read_symlink(pth_dir);
 	}
@@ -382,10 +395,10 @@ read_dir_files(zo_path pth_dir, zo_dir& dir, const zo_ftype ft, const bool only_
 			auto st = entry.status();
 			if(fs::is_directory(st)){
 				if(follw_symlk || ! fs::is_symlink(pth)){
-					read_dir_files(entry, dir, ft, only_with_ref, follw_symlk);
+					read_dir_files(entry, ft, only_with_ref, follw_symlk);
 				}
 			} else if(fs::is_regular_file(st)){
-				read_file(pth, dir, ft, only_with_ref);
+				read_file(pth, ft, only_with_ref);
 			} 
 		}
 	}
@@ -402,37 +415,45 @@ fill_files(const zo_path& pth_dir, zo_str_vec& names){
 }
 
 void 
-read_files(const zo_str_vec& all_pth, const zo_ftype ft, zo_dir& dir, bool is_recu, bool follw_symlk){
+zo_orga::read_files(const zo_str_vec& all_pth, const zo_ftype ft){
 	for(auto nm : all_pth){
 		zo_path f_pth = nm;
 		if(! fs::exists(f_pth)){
 			continue;
 		}
 		if(fs::is_directory(f_pth)){
-			if(! is_recu){
+			if(! recursive){
 				continue;
 			}
-			read_dir_files(f_pth, dir, ft, false, follw_symlk);
+			read_dir_files(f_pth, ft, false, follw_symlk);
 		} else if(fs::is_regular_file(f_pth)){
-			read_file(f_pth, dir, ft, false);
+			read_file(f_pth, ft, false);
 		} 
 	}
 }
 
 void 
-zo_orga::read_selected(zo_dir& dir, bool only_sfz, bool follw_symlk){
+zo_orga::read_selected(){
 	if(f_names.empty()){
 		fill_files(dir_from, f_names);
 	}
-	if(! only_sfz){
-		read_files(f_names, zo_ftype::sample, dir, recursive, follw_symlk);
+	
+	bool adding_ext = (oper == zo_action::add_sfz);
+	if(! only_sfz && ! adding_ext){
+		read_files(f_names, zo_ftype::sample);
 	}
-	read_files(f_names, zo_ftype::soundfont, dir, recursive, follw_symlk);
+	
+	read_files(f_names, zo_ftype::soundfont);
+	
+	if(adding_ext){
+		return;
+	}
+	
 	//fprintf(stdout, "basic reading Ok\n");
-	fprintf(stdout, "tot_selected_samples = %ld\n", dir.tot_selected_spl);
-	if(dir.tot_selected_spl > 0){
-		ZO_CK(! dir.base_pth.empty());
-		read_dir_files(dir.base_pth, dir, zo_ftype::soundfont, true, follw_symlk);
+	fprintf(stdout, "tot_selected_samples = %ld\n", tot_selected_spl);
+	if(tot_selected_spl > 0){
+		ZO_CK(! base_pth.empty());
+		read_dir_files(base_pth, zo_ftype::soundfont, true, follw_symlk);
 	}
 	//fprintf(stdout, "recu reading Ok\n");
 }
@@ -458,8 +479,8 @@ int test_fs(int argc, char* argv[]){
 		std::cout << "path part: " << ii++ << " = " << part << "\n";		
 	}
 	
-	zo_dir dir;
-	read_dir_files(pth1, dir, zo_ftype::soundfont, false, false);
+	zo_orga org;
+	org.read_dir_files(pth1, zo_ftype::soundfont, false, false);
 	
 	return 0;
 }
@@ -479,7 +500,7 @@ int test_rx(int argc, char* argv[]){
 	auto fl = make_sfont_pt(fpth);
 	zo_dir dir;
 	
-	sfz_get_samples(fl, dir);
+	fl->get_samples(dir);
 	for(zo_ref_pt ii : fl->all_ref){ 
 		zo_path orig = ii->get_orig();
 		//ZO_CK(orig.is_absolute());
@@ -980,6 +1001,20 @@ zo_ref::print_lines(std::ofstream& dst, const zo_string& ln){
 }
 
 void
+zo_sfont::prepare_add_sfz_ext(){
+	ZO_CK(fpth.nxt_pth.empty());
+	fpth.nxt_pth = fpth.orig_pth + ".sfz";
+}
+
+void
+zo_orga::prepare_add_sfz_ext(){
+	for(const auto& sfe : all_selected_sfz){
+		zo_sfont_pt sf = sfe.second;
+		sf->prepare_add_sfz_ext();
+	}
+}
+
+void
 zo_orga::organizer_main(const zo_str_vec& args){
 	fprintf(stderr, "organizer_main\n");
 	if(! get_args(args)){
@@ -996,6 +1031,9 @@ zo_orga::organizer_main(const zo_str_vec& args){
 	
 	if(oper == zo_action::fix){
 		prepare_fix();
+	}
+	if(oper == zo_action::add_sfz){
+		prepare_add_sfz_ext();
 	}
 	
 	if(just_list){
