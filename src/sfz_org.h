@@ -55,7 +55,21 @@ namespace fs = std::experimental::filesystem;
 typedef enum {
 	sfz_cannot_open,
 	sfz_read_1_and_2_differ,
+	sfz_pth_not_absolute,
+	sfz_pth_not_exists,
+	sfz_pth_not_directory,
+	sfz_base_not_absolute,
+	sfz_base_not_exists,
+	sfz_base_not_directory,
 } sfz_ex_cod_t;
+
+
+const std::error_category& zo_err_category();
+
+inline std::error_code make_zo_err(int val){
+  return std::error_code(val, zo_err_category());
+}
+
 
 class sfz_exception : public top_exception {
 public:
@@ -186,6 +200,7 @@ class zo_sfont {
 	
 public:
 	zo_fname	fpth;
+	bool 		did_it{false};
 	zo_ref_vec	all_ref;
 	
 	zo_sfont(const zo_path& fl){
@@ -212,6 +227,9 @@ public:
 };
 
 using zo_ptsfont_vec = std::vector<zo_sfont_pt>;
+using zo_sfont_map = std::map<zo_string, zo_sfont_pt>;
+using zo_sample_map = std::map<zo_string, zo_sample_pt>;
+
 
 class zo_sample {
 	zo_sample(zo_sample& rr) = delete;
@@ -222,7 +240,8 @@ class zo_sample {
 public:
 	bool 			selected{false};
 	zo_fname		fpth;
-	zo_ptsfont_vec	all_bk_ref;
+	bool 			did_it{false};
+	zo_sfont_map	all_bk_ref;
 	
 	zo_sample(zo_path fl){
 		fpth.orig_pth = zo_path{fl};
@@ -267,9 +286,6 @@ make_sample_pt(const zo_path& pth){
 	//return std::make_shared<zo_sample>(pth);
 }
 
-
-using zo_sfont_map = std::map<zo_string, zo_sfont_pt>;
-using zo_sample_map = std::map<zo_string, zo_sample_pt>;
 
 class zo_dir {
 	zo_dir(zo_dir& rr) = delete;
@@ -349,7 +365,7 @@ public:
 			return sfz;
 		}
   
-		std::cout << "selecting " << pth << "\n";
+		std::cout << ">>>SELECTING " << pth << "\n";
 		is_nw = true;
 		all_selected_sfz[pth] = sf;
 		return sf;
@@ -368,7 +384,7 @@ public:
 			return zo_null;
 		}
   
-		std::cout << "selecting " << pth << "\n";
+		std::cout << ">>>SELECTING " << pth << "\n";
 		is_nw = true;
 		all_selected_spl[pth] = sp;
 		return sp;

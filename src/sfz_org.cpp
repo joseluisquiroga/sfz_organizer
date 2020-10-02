@@ -19,6 +19,23 @@ print_version(const zo_str_vec& args){
 	fprintf(stdout, "%s 0.1\n", args[0].c_str());
 }
 
+class zo_err_cat : public std::error_category
+{
+	public:
+	virtual const char *name() const noexcept override {
+		return "zo_err";
+	}
+	
+	virtual std::string message(int val) const override {
+		std::string msg = "zo_err" + std::to_string(val);
+		return msg;
+	}
+};
+
+const std::error_category& zo_err_category(){
+  static zo_err_cat instance;
+  return instance;
+}
 
 zo_string ZO_INC_PATTERN_STR = "^f([[:digit:]]*)_";
 std::regex ZO_INC_PATTERN{ZO_INC_PATTERN_STR.c_str()};
@@ -72,22 +89,34 @@ std::regex ZO_OPCODE_PATTERN{ZO_OPCODE_PATTERN_STR.c_str()};
 zo_path 
 relative(const zo_path& pth, const zo_path& base, std::error_code& ec){
 	if(! pth.is_absolute()){
+		fprintf(stdout, "sfz_pth_not_absolute:'%s'\n", pth.c_str());
+		ec = make_zo_err(sfz_pth_not_absolute);
 		return "";
 	}
 	if(! fs::exists(pth)){
+		fprintf(stdout, "sfz_pth_not_exists:'%s'\n", pth.c_str());
+		ec = make_zo_err(sfz_pth_not_exists);
 		return "";
 	}
 	if(! fs::is_directory(pth)){
+		fprintf(stdout, "sfz_pth_not_directory:'%s'\n", pth.c_str());
+		ec = make_zo_err(sfz_pth_not_directory);
 		return "";
 	}
 
 	if(! base.is_absolute()){
+		fprintf(stdout, "sfz_base_not_absolute:'%s'\n", base.c_str());
+		ec = make_zo_err(sfz_base_not_absolute);
 		return "";
 	}
 	if(! fs::exists(base)){
+		fprintf(stdout, "sfz_base_not_exists:'%s'\n", base.c_str());
+		ec = make_zo_err(sfz_base_not_exists);
 		return "";
 	}
 	if(! fs::is_directory(base)){
+		fprintf(stdout, "sfz_base_not_directory:'%s'\n", base.c_str());
+		ec = make_zo_err(sfz_base_not_directory);
 		return "";
 	}
 
@@ -132,19 +161,24 @@ zo_ref::get_next(){
 }
 
 const zo_string
+get_rel_sample_path(zo_path& sf_pth, zo_path& rf_pth){
+	zo_path sf_pnt = sf_pth.parent_path();
+	zo_path rf_pnt = rf_pth.parent_path();
+	
+	std::error_code ec;
+	zo_path rel_dir = find_relative(rf_pnt, sf_pnt, ec);
+	zo_path rel_pth = rel_dir / rf_pth.filename();
+	ZO_CK(! ec);
+	return rel_pth;
+}
+
+const zo_string
 zo_ref::get_orig_rel(){
 	ZO_CK(owner != zo_null);
 	ZO_CK(fref != zo_null);
 	zo_path sf_pth = owner->get_orig();
 	zo_path rf_pth = get_orig();
-	
-	zo_path sf_pnt = sf_pth.parent_path();
-	zo_path rf_pnt = rf_pth.parent_path();
-	
-	std::error_code ec;
-	zo_path rel_pth = find_relative(rf_pnt, sf_pnt, ec) / rf_pth.filename();
-	ZO_CK(! ec);
-	return rel_pth;
+	return get_rel_sample_path(sf_pth, rf_pth);
 }
 
 const zo_string
@@ -153,14 +187,7 @@ zo_ref::get_next_rel(){
 	ZO_CK(fref != zo_null);
 	zo_path sf_pth = owner->get_next();
 	zo_path rf_pth = get_next();
-	
-	zo_path sf_pnt = sf_pth.parent_path();
-	zo_path rf_pnt = rf_pth.parent_path();
-	
-	std::error_code ec;
-	zo_path rel_pth = find_relative(rf_pnt, sf_pnt, ec) / rf_pth.filename();
-	ZO_CK(! ec);
-	return rel_pth;
+	return get_rel_sample_path(sf_pth, rf_pth);
 }
 
 
@@ -215,9 +242,10 @@ is_text_file(zo_path pth){
 int
 sfz_get_samples(zo_sfont_pt fl, zo_dir& dir){
 	std::ifstream istm;
-	istm.open(fl->get_orig().c_str(), std::ios::binary);
+	zo_path fl_org = fl->get_orig();
+	istm.open(fl_org.c_str(), std::ios::binary);
 	if(! istm.good() || ! istm.is_open()){
-		throw sfz_exception(sfz_cannot_open, fl->get_orig());
+		throw sfz_exception(sfz_cannot_open, fl_org);
 	}
 	
 	std::smatch sample_matches;
@@ -268,10 +296,10 @@ sfz_get_samples(zo_sfont_pt fl, zo_dir& dir){
 		//fprintf(stdout, "sample_f_nam:'%s'\n", lref.c_str());
 		
 		auto ec = std::error_code{};
-		zo_path fx_ref = fix_ref_path(lref, fl->get_orig(), ec);
+		zo_path fx_ref = fix_ref_path(lref, fl_org, ec);
 		
 		if(ec){
-			dir.bad_spl->all_bk_ref.push_back(fl);
+			dir.bad_spl->all_bk_ref[fl_org] = fl;
 			continue;
 		}
 		
@@ -283,7 +311,7 @@ sfz_get_samples(zo_sfont_pt fl, zo_dir& dir){
 		ZO_CK(spl != zo_null);		
 		ZO_CK(spl->get_orig() == fx_ref);
 		
-		spl->all_bk_ref.push_back(fl);
+		spl->all_bk_ref[fl_org] = fl;
 		
 		zo_sample_pt sspl = dir.get_selected_sample(fx_ref, spl, is_nw, false);
 		if(sspl == zo_null){
@@ -298,7 +326,7 @@ sfz_get_samples(zo_sfont_pt fl, zo_dir& dir){
 		
 		if(ec){
 			nw_ref->bad_pth = lref;
-			fprintf(stderr, "bad_ref:'%s' in file %s\n", lref.c_str(), fl->get_orig().c_str());
+			fprintf(stderr, "bad_ref:'%s' in file %s\n", lref.c_str(), fl_org.c_str());
 		}
 	}
 	
@@ -686,7 +714,16 @@ zo_ref::print_actions(zo_orga& org){
 }
 
 void
+print_separator_line(const char* sep){
+	for(int aa = 0; aa < 100; aa++){ 
+		fprintf(stdout, "%s", sep); 
+	} 
+	fprintf(stdout, "\n");  
+}
+
+void
 zo_sfont::print_actions(zo_orga& org){
+	print_separator_line("=");
 	fpth.print_actions(org);
 	for(auto rf: all_ref){
 		rf->print_actions(org);
@@ -695,8 +732,10 @@ zo_sfont::print_actions(zo_orga& org){
 
 void
 zo_sample::print_actions(zo_orga& org){
+	print_separator_line("+");
 	fpth.print_actions(org);
-	for(zo_sfont_pt sf: all_bk_ref){
+	for(const auto& sfe : all_bk_ref){
+		zo_sfont_pt sf = sfe.second;
 		fprintf(stdout, "FOUND IN----------\n");
 		sf->fpth.print_actions(org);
 	}
@@ -705,10 +744,16 @@ zo_sample::print_actions(zo_orga& org){
 
 void
 zo_dir::print_actions(zo_orga& org){
+	print_separator_line("%");
+	fprintf(stdout, "ALL_SELECTED SOUNDFONTS\n");  
+	print_separator_line("%");
 	for(const auto& sfe : all_selected_sfz){
 		zo_sfont_pt sf = sfe.second;
 		sf->print_actions(org);
 	}
+	print_separator_line("#");
+	fprintf(stdout, "ALL_SELECTED SAMPLES\n");  
+	print_separator_line("#");
 	for(const auto& sme : all_selected_spl){
 		zo_sample_pt sm = sme.second;
 		sm->print_actions(org);
@@ -812,13 +857,12 @@ int main(int argc, char* argv[]){
 
 void 
 zo_sfont::do_actions(zo_orga& org){
-	if(get_next().empty()){
-		return;
-	}
+	ZO_CK(! did_it);
+	if(did_it){ return; }
+	did_it = true;
+	
 	zo_path nxt = get_next();
 	fs::create_directories(nxt.parent_path());
-	fpth.nxt_pth = "";
-	ZO_CK(get_next().empty());
 	
 	bool is_mv = org.is_move();
 	zo_path tmp = org.get_temp_path();
@@ -832,13 +876,12 @@ zo_sfont::do_actions(zo_orga& org){
 
 void 
 zo_sample::do_actions(zo_orga& org){
-	if(get_next().empty()){
-		return;
-	}
+	ZO_CK(! did_it);
+	if(did_it){ return; }
+	did_it = true;
+	
 	zo_path nxt = get_next();
 	fs::create_directories(nxt.parent_path());
-	fpth.nxt_pth = "";
-	ZO_CK(get_next().empty());
 	
 	bool is_mv = org.is_move();
 	if(is_mv){
@@ -885,6 +928,10 @@ zo_sfont::prepare_tmp_file(const zo_path& tmp_pth){
 	long lnum = 0;
 	zo_string ln;
 	for(;getline(src, ln);){
+		if(it == all_ref.end()){
+			dst << ln << '\n';
+			continue;
+		}
 		lnum++;
 		std::size_t pos_spl = ln.find(ZO_SAMPLE_STR);
 		bool has_spl = (pos_spl != std::string::npos);
@@ -896,7 +943,6 @@ zo_sfont::prepare_tmp_file(const zo_path& tmp_pth){
 			dst << ln << '\n';
 			continue;
 		}
-		ZO_CK(it != all_ref.end());
 		zo_ref_pt rf = *it;
 		ZO_CK(rf != zo_null);
 		if(rf->num_line > lnum){
