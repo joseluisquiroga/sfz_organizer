@@ -491,6 +491,8 @@ public:
 		fprintf(stdout, "Calling ~zo_orga\n");
 	}
 	
+	void ignore_purged_dir();
+	
 	bool get_args(const zo_str_vec& args);
 	
 	bool is_move(){

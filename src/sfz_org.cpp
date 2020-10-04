@@ -358,6 +358,7 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 	
 	auto igt = all_to_ignore.find(apth);
 	if(igt != all_to_ignore.end()){
+		std::cout << "IGNORING " << apth << "\n";
 		return;
 	}
 	
@@ -401,9 +402,15 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 
 void 
 zo_orga::read_dir_files(zo_path pth_dir, const zo_ftype ft, const bool only_with_ref, const bool follw_symlk){
+	auto igt = all_to_ignore.find(pth_dir);
+	if(igt != all_to_ignore.end()){
+		std::cout << "IGNORING " << pth_dir << "\n";
+		return;
+	}
 	if(fs::is_symlink(pth_dir)){
 		pth_dir = fs::read_symlink(pth_dir);
 	}
+	std::cout << "ENTERING_DIR " << pth_dir << "\n";
 	if(fs::exists(pth_dir) && fs::is_directory(pth_dir)){
 		for (const auto& entry : fs::directory_iterator(pth_dir)){
 			zo_path pth = entry.path();
@@ -608,6 +615,18 @@ print_help(const zo_str_vec& args){
 	)help", prg_nm.c_str(), prg_nm.c_str());
 }
 
+void
+zo_orga::ignore_purged_dir(){
+	zo_path pth = "purged";
+	if(fs::exists(pth)){
+		std::error_code ec;
+		auto apth = zo_path{fs::canonical(pth, ec)};
+		if(! ec){
+			all_to_ignore.insert(apth);
+		}
+	}
+}
+
 bool
 zo_orga::get_args(const zo_str_vec& args){
 	ZO_CK(! args.empty());
@@ -616,6 +635,8 @@ zo_orga::get_args(const zo_str_vec& args){
 		print_help(args);
 		return false;
 	}
+	
+	ignore_purged_dir();
 	
 	auto it = args.begin();
 	for(; it != args.end(); it++){
