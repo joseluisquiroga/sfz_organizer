@@ -51,6 +51,7 @@ namespace fs = std::experimental::filesystem;
 
 #include <vector>
 #include <map>
+#include <set>
 
 typedef enum {
 	sfz_cannot_open,
@@ -107,6 +108,26 @@ enum class zo_action {
 	fix,
 	add_sfz
 };
+
+zo_string get_action_str(zo_action ac){
+	switch(ac){
+		case zo_action::nothing:
+			return "nothing";
+		case zo_action::move:
+			return "move";
+		case zo_action::copy:
+			return "copy";
+		case zo_action::purge:
+			return "purge";
+		case zo_action::fix:
+			return "fix";
+		case zo_action::add_sfz:
+			return "add_sfz";
+		default:
+			return "invalid_action";
+	}
+	return "invalid_action";
+}
 
 enum class zo_policy {
 	replace,
@@ -231,13 +252,14 @@ public:
 	void prepare_tmp_file(const zo_path& tmp_pth);
 	
 	void prepare_add_sfz_ext();
-	void prepare_purge();
+	void prepare_purge(zo_orga& org);
 	
 };
 
 using zo_ptsfont_vec = std::vector<zo_sfont_pt>;
 using zo_sfont_map = std::map<zo_string, zo_sfont_pt>;
 using zo_sample_map = std::map<zo_string, zo_sample_pt>;
+using zo_file_set = std::set<zo_string>;
 
 
 class zo_sample {
@@ -271,7 +293,7 @@ public:
 	void print_actions(zo_orga& org);
 	void do_actions(zo_orga& org);
 	void prepare_fix(zo_dir& dir);
-	void prepare_purge();
+	void prepare_purge(zo_orga& org);
 };
 
 
@@ -306,6 +328,8 @@ class zo_dir {
 public:
 	zo_path 			base_pth{""};
 	
+	zo_file_set			all_to_ignore;
+	
 	zo_sfont_map 		all_read_sfz;
 	zo_sample_map 		all_read_spl;
 	
@@ -315,8 +339,6 @@ public:
 	zo_sfont_map 		all_nxt_sfz;
 	zo_sample_map 		all_nxt_spl;
 
-	zo_sfont_map 		all_no_samples_sfz;
-	
 	zo_sample_pt 		bad_spl{zo_null};
 	
 	long 				tot_selected_spl{0};
@@ -432,22 +454,6 @@ public:
 		return sp;
 	}
 
-	zo_sfont_pt get_no_samples_soundfont(const zo_string& pth, zo_sfont_pt sf, bool& is_nw){
-		ZO_CK(sf != zo_null);
-		is_nw = false;
-		auto it = all_no_samples_sfz.find(pth);
-		if(it != all_no_samples_sfz.end()){
-			zo_sfont_pt sfz = it->second;
-			ZO_CK(sfz != zo_null);
-			return sfz;
-		}
-  
-		std::cout << ">>>FOUND_NO_VALID_SAMPLES_IN " << pth << "\n";
-		is_nw = true;
-		all_no_samples_sfz[pth] = sf;
-		return sf;
-	}
-	
 	void print_actions(zo_orga& org);
 	void do_actions(zo_orga& org);
 };

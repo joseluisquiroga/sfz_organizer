@@ -334,10 +334,6 @@ zo_sfont::get_samples(zo_dir& dir){
 		}
 	}
 	
-	if(tot_spl_ref == 0){
-		bool is_nw = false;
-		dir.get_no_samples_soundfont(fl_orig, fl, is_nw);
-	}
 }
 
 bool
@@ -360,6 +356,11 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 	bool is_nw = false;
 	bool is_sfz = has_sfz_ext(pth);
 	
+	auto igt = all_to_ignore.find(apth);
+	if(igt != all_to_ignore.end()){
+		return;
+	}
+	
 	bool adding_ext = (oper == zo_action::add_sfz);
 	if(adding_ext){
 		zo_sfont_pt sf = get_read_soundfont(apth, is_nw);
@@ -380,14 +381,12 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 			sf->is_txt = is_text_file(apth);
 			normal_sfz = sf->is_txt;
 		}
-		if(normal_sfz){
-			if(is_nw){
-				sf->get_samples(dir);
-			}
-			bool has_ref = ! sf->all_ref.empty();
-			if(! only_with_ref || has_ref){
-				get_selected_soundfont(apth, sf, is_nw);
-			}
+		if(is_nw && normal_sfz){
+			sf->get_samples(dir);
+		}
+		bool has_ref = ! sf->all_ref.empty();
+		if(! only_with_ref || has_ref){
+			get_selected_soundfont(apth, sf, is_nw);
 		}
 	}
 	if((ft == zo_ftype::sample) && ! is_sfz){
@@ -550,8 +549,7 @@ print_help(const zo_str_vec& args){
 		moves all non utf8 files with '.sfz' ext to --to directory.
 		moves all sfz soundfonts with no valid sample references under the --from directory, to the --to directory.
 		moves all samples with no sample references in sfz soundfonts under the --from directory, to --to directory.
-		Use with care because all this operations are with respect to selected files. 
-		Safe use would be by selecting a whole (--recursive) supposed consistent --from directory of sfz soundfonts and samples.
+		Works on the whole --from directory (as if --recursive  and no files were selected). 
 	-a --add_sfz_ext
 		add_sfz_ext action. Add the extention ".sfz" to selected files. Rest of parameters will decide what and how.
 		Only does it to utf8 encoded files checking the first Kbyte and only if it does not end with the '.sfz' extension already.
@@ -560,6 +558,8 @@ print_help(const zo_str_vec& args){
 		All non alphanumeric characters are replaced with _ (underscore). 
 		Conflicts are resolved before renaming by a counter, at the begining of the name, that increments until there is no conflict.
 		Use --match and --substitute toghether with --move if more control is desired.
+	-i --ignore <file>
+		Do not select this file or anything under it if it is a directory.
 	-f --from <source_dir>
 		Source directory. All sfz soundfonts and samples (referenced files by sfz files) subject of action MUST be under this directory.
 		If no --to option is given the --to directory will be the same as this.
@@ -603,6 +603,7 @@ print_help(const zo_str_vec& args){
 		If the option --recursive is given and it is under one of the selected directories.
 	6. If no files are selected then ALL files in the current directory are selected.
 	7. The default policy is --keep.
+	8. If more than one action (--move, --copy, --purge, --add_sfz_ext, --fix) is given, only the last one will be executed.
 		
 	)help", prg_nm.c_str(), prg_nm.c_str());
 }
@@ -637,6 +638,17 @@ zo_orga::get_args(const zo_str_vec& args){
 		}
 		else if((ar == "-x") || (ar == "--fix")){
 			oper = zo_action::fix;
+		}
+		else if((ar == "-i") || (ar == "--ignore")){
+			it++; if(it == args.end()){ break; }
+			zo_path pth = *it;
+			if(fs::exists(pth)){
+				std::error_code ec;
+				auto apth = zo_path{fs::canonical(pth, ec)};
+				if(! ec){
+					all_to_ignore.insert(apth);
+				}
+			}
 		}
 		else if((ar == "-f") || (ar == "--from")){
 			it++; if(it == args.end()){ break; }
@@ -687,6 +699,16 @@ zo_orga::get_args(const zo_str_vec& args){
 			}
 		}
 	}
+	
+	if(oper == zo_action::purge){
+		f_names.clear();
+		recursive = true;
+	}
+	if(oper == zo_action::nothing){
+		just_list = true;
+	}
+	
+	
 	if(dir_from.empty() && ! dir_to.empty()){
 		dir_from = dir_to;
 	}
@@ -715,8 +737,11 @@ zo_orga::get_args(const zo_str_vec& args){
 	tmp_pth = base_pth / tmp_nam;
 	fs::create_directories(tmp_pth.parent_path());
 	
-	if(oper == zo_action::nothing){
-		just_list = true;
+	zo_string ac_str = get_action_str(oper);
+	if(just_list){
+		fprintf(stdout, "simulating action: %s\n", ac_str.c_str());
+	} else {
+		fprintf(stdout, "executing action: %s\n", ac_str.c_str());
 	}
 	
 	return true;
@@ -724,8 +749,11 @@ zo_orga::get_args(const zo_str_vec& args){
 
 void
 zo_fname::print_actions(zo_orga& org){
+	bool purging = (org.oper == zo_action::purge);
 	if(nxt_pth.empty()){
-		fprintf(stdout, "SKIP '%s'\n", orig_pth.c_str());
+		if(! purging){
+			fprintf(stdout, "SKIP '%s'\n", orig_pth.c_str());
+		}
 		return;
 	}
 	bool is_mv = org.is_move();
@@ -735,6 +763,7 @@ zo_fname::print_actions(zo_orga& org){
 
 void
 zo_ref::print_actions(zo_orga& org){
+	ZO_CK(org.oper != zo_action::purge);
 	fprintf(stdout, "----------\n");
 	if(! bad_pth.empty()){
 		fprintf(stdout, "BAD_REFERENCE_SKIPPED '%s'\n", bad_pth.c_str());
@@ -766,8 +795,21 @@ print_separator_line(const char* sep){
 
 void
 zo_sfont::print_actions(zo_orga& org){
-	print_separator_line("=");
+	bool purging = (org.oper == zo_action::purge);
+	if(! purging || ! fpth.nxt_pth.empty()){
+		print_separator_line("=");
+	}
 	fpth.print_actions(org);
+	
+	if(purging){
+		if(! is_txt){
+			fprintf(stdout, "NON_UTF8\n");
+		} else
+		if(tot_spl_ref == 0){
+			fprintf(stdout, "NO_VALID_SAMPLES_FOUND\n");
+		}
+		return;
+	}
 	for(auto rf: all_ref){
 		rf->print_actions(org);
 	}
@@ -775,8 +817,18 @@ zo_sfont::print_actions(zo_orga& org){
 
 void
 zo_sample::print_actions(zo_orga& org){
-	print_separator_line("+");
+	bool purging = (org.oper == zo_action::purge);
+	if(! purging || ! fpth.nxt_pth.empty()){
+		print_separator_line("+");
+	}
 	fpth.print_actions(org);
+	
+	if(purging){
+		if(all_bk_ref.empty()){
+			fprintf(stdout, "NO_REFERENCES_IN_SFZ_SOUNDFONTS\n");
+		}
+		return;
+	}
 	for(const auto& sfe : all_bk_ref){
 		zo_sfont_pt sf = sfe.second;
 		fprintf(stdout, "FOUND IN----------\n");
@@ -800,6 +852,18 @@ zo_dir::print_actions(zo_orga& org){
 	for(const auto& sme : all_selected_spl){
 		zo_sample_pt sm = sme.second;
 		sm->print_actions(org);
+	}
+	
+	ZO_CK(bad_spl != zo_null);
+	if(! bad_spl->all_bk_ref.empty()){
+		print_separator_line("!");
+		fprintf(stdout, "ALL_WITH_BAD_REFERENCES\n");  
+		print_separator_line("!");
+		for(const auto& sfe : bad_spl->all_bk_ref){
+			zo_sfont_pt sf = sfe.second;
+			fprintf(stdout, "FOUND_BAD_REFERENCES_IN:\n");  
+			sf->fpth.print_actions(org);
+		}
 	}
 }
 
@@ -1044,27 +1108,47 @@ zo_orga::prepare_add_sfz_ext(){
 	}
 }
 
-void
-zo_sfont::prepare_purge(){
-	ZO_CK(fpth.nxt_pth.empty());
-	//fpth.nxt_pth = fpth.orig_pth + ".sfz";
+const zo_path
+get_from_rel_path(zo_path& pth, zo_path& dir_from){
+	zo_path dir_pth = pth.parent_path();
+	
+	std::error_code ec;
+	zo_path rel_dir = find_relative(dir_pth, dir_from, ec);
+	zo_path rel_pth = rel_dir / pth.filename();
+	ZO_CK(! ec);
+	return rel_pth;
 }
 
 void
-zo_sample::prepare_purge(){
+zo_sfont::prepare_purge(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	//fpth.nxt_pth = fpth.orig_pth + ".sfz";
+	if(! is_txt || (tot_spl_ref == 0)){
+		zo_path pth = fpth.orig_pth;
+		fpth.nxt_pth = org.dir_to / "purged" / get_from_rel_path(pth, org.dir_from);
+		return;
+	}
+}
+
+void
+zo_sample::prepare_purge(zo_orga& org){
+	ZO_CK(fpth.nxt_pth.empty());
+	if(all_bk_ref.empty()){
+		zo_path pth = fpth.orig_pth;
+		fpth.nxt_pth = org.dir_to / "purged" / get_from_rel_path(pth, org.dir_from);
+		return;
+	}
 }
 
 void
 zo_orga::prepare_purge(){
+	zo_orga& org = *this;
 	for(const auto& sfe : all_selected_sfz){
 		zo_sfont_pt sf = sfe.second;
-		sf->prepare_purge();
+		sf->prepare_purge(org);
 	}
 	for(const auto& sme : all_selected_spl){
 		zo_sample_pt sm = sme.second;
-		sm->prepare_purge();
+		sm->prepare_purge(org);
 	}
 }
 
@@ -1089,6 +1173,10 @@ zo_orga::organizer_main(const zo_str_vec& args){
 	if(oper == zo_action::add_sfz){
 		prepare_add_sfz_ext();
 	}
+	if(oper == zo_action::purge){
+		prepare_purge();
+	}
+	
 	
 	if(just_list){
 		std::cout << "just_list\n";
