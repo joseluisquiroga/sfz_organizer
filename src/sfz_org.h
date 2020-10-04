@@ -253,6 +253,7 @@ public:
 	
 	void prepare_add_sfz_ext();
 	void prepare_purge(zo_orga& org);
+	void prepare_copy(zo_orga& org);
 	
 };
 
@@ -294,6 +295,7 @@ public:
 	void do_actions(zo_orga& org);
 	void prepare_fix(zo_dir& dir);
 	void prepare_purge(zo_orga& org);
+	void prepare_copy(zo_orga& org);
 };
 
 
@@ -470,6 +472,7 @@ public:
 	bool only_sfz = false; // recursive option
 	bool follw_symlk = false;
 	bool samples_too = false;
+	bool hidden_too = false;
 	
 	zo_policy pol{zo_policy::keep}; // replace | keep options
 	
@@ -513,6 +516,7 @@ public:
 	void prepare_fix();
 	void prepare_add_sfz_ext();
 	void prepare_purge();
+	void prepare_copy();
 	void organizer_main(const zo_str_vec& args);
 };
 

@@ -337,6 +337,11 @@ zo_sfont::get_samples(zo_dir& dir){
 }
 
 bool
+is_hidden(const zo_string& pth){
+	return (! pth.empty() && (pth[0] == '.'));
+}
+
+bool
 has_sfz_ext(const zo_path& pth){
 	zo_string fnam = pth.filename();
 	long pos = fnam.length() - ZO_SFZ_EXT.length();
@@ -359,6 +364,12 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 	auto igt = all_to_ignore.find(apth);
 	if(igt != all_to_ignore.end()){
 		std::cout << "IGNORING " << apth << "\n";
+		return;
+	}
+	
+	bool is_hdn = is_hidden(apth.filename());
+	if(is_hdn && ! hidden_too){
+		std::cout << "Hidden_file_ignored " << apth << "\n";
 		return;
 	}
 	
@@ -407,6 +418,12 @@ zo_orga::read_dir_files(zo_path pth_dir, const zo_ftype ft, const bool only_with
 		std::cout << "IGNORING " << pth_dir << "\n";
 		return;
 	}
+	bool is_hdn = is_hidden(pth_dir.filename());
+	if(is_hdn && ! hidden_too){
+		std::cout << "Hidden_directory_ignored " << pth_dir << "\n";
+		return;
+	}
+	
 	if(fs::is_symlink(pth_dir)){
 		pth_dir = fs::read_symlink(pth_dir);
 	}
@@ -547,10 +564,16 @@ print_help(const zo_str_vec& args){
 	Options:
 	-l --list
 		Just print what it would do without actualy doing it.
-	-n --move
+	-m --move
 		move action. Rest of parameters will decide what and how.
+		If a --to directory is given it will be the target. All selected files will be moved to that directoy.
+		If a --substitute option is given, target filenames will be determined by that option.
+		If not --to directory and no --substitute option are given the target will be the last explicitly selected file in the command line.
 	-c --copy
 		copy action. Rest of parameters will decide what and how.
+		If a --to directory is given it will be the target. All selected files will be copied to that directoy.
+		If a --substitute option is given, target filenames will be determined by that option.
+		If not --to directory and no --substitute option are given the target will be the last explicitly selected file in the command line.
 	-p --purge
 		purge action. Rest of parameters will decide what and how.
 		moves all non utf8 files with '.sfz' ext to --to directory.
@@ -567,29 +590,33 @@ print_help(const zo_str_vec& args){
 		Use --match and --substitute toghether with --move if more control is desired.
 	-i --ignore <file>
 		Do not select this file or anything under it if it is a directory.
+	-d --hidden
+		Read also hidden files.
+		Any file or directory name that starts with '.' is considdered hidden and by default it is not read.
 	-f --from <source_dir>
 		Source directory. All sfz soundfonts and samples (referenced files by sfz files) subject of action MUST be under this directory.
 		If no --to option is given the --to directory will be the same as this.
 	-t --to <dest_dir>
 		Destination directory. If no --from option is given the source directory will be the same as this.
-		If the --to directory is not under of the --from directory a --move of sfz soundfonts will only copy any referenced sample.
-		If the --to directory is under of the --from directory a --copy of sfz soundfonts will not copy any referenced sample, 
-		only preserve consistency, unless the --samples_too option is given.
-	-S --samples_too
+		In a --move, if the --to directory is not under of the --from directory, it will only copy any referenced sample to the target to 
+		keep consistency of other sfz soundfonts.
+	-A --samples_too
 		Copy samples too.
-	-k --keep
+		In a  --copy, if the target is under of the --from directory copy the samples too. By default it will only change the references in
+		copied sfz soundfonts to the existing samples (to keep reference consistency).
+	-K --keep
 		keep the destination file when it already exists.
-	-e --replace
+	-P --replace
 		replace the destination file when it already exists.
-	-m --match <regex_to_match>
+	-M --match <regex_to_match>
 		match regex to use in action. All selected files with names (not paths) matching will be used as subject of action.
-	-s --substitute <expression_to_substitute>
+	-S --substitute <expression_to_substitute>
 		substitute expression used to determine the file name result of action.
 	-r --recursive
 		do action for all subdirectories under selected directories.
 	-o --only_sfz
 		Only select files with '.sfz' extension.
-	-w --follow_symlinks
+	-F --follow_symlinks
 		Follow symlinks when reading directories.
 	--help 
 	--version 
@@ -645,7 +672,7 @@ zo_orga::get_args(const zo_str_vec& args){
 		if((ar == "-l") || (ar == "--list")){
 			just_list = true;
 		}
-		else if((ar == "-n") || (ar == "--move")){
+		else if((ar == "-m") || (ar == "--move")){
 			oper = zo_action::move;
 		}
 		else if((ar == "-c") || (ar == "--copy")){
@@ -679,20 +706,23 @@ zo_orga::get_args(const zo_str_vec& args){
 			it++; if(it == args.end()){ break; }
 			dir_to = *it;
 		}
-		else if((ar == "-S") || (ar == "--samples_too")){
+		else if((ar == "-d") || (ar == "--hidden")){
+			hidden_too = true;
+		}
+		else if((ar == "-A") || (ar == "--samples_too")){
 			samples_too = true;
 		}
-		else if((ar == "-k") || (ar == "--keep")){
+		else if((ar == "-K") || (ar == "--keep")){
 			pol = zo_policy::keep;
 		}
-		else if((ar == "-e") || (ar == "--replace")){
+		else if((ar == "-P") || (ar == "--replace")){
 			pol = zo_policy::replace;
 		}
-		else if((ar == "-m") || (ar == "--match")){
+		else if((ar == "-M") || (ar == "--match")){
 			it++; if(it == args.end()){ break; }
 			match_str = *it;
 		}
-		else if((ar == "-s") || (ar == "--substitute")){
+		else if((ar == "-S") || (ar == "--substitute")){
 			it++; if(it == args.end()){ break; }
 			subst_str = *it;
 		}
@@ -702,7 +732,7 @@ zo_orga::get_args(const zo_str_vec& args){
 		else if((ar == "-o") || (ar == "--only_sfz")){
 			only_sfz = true;
 		}
-		else if((ar == "-w") || (ar == "--follow_symlinks")){
+		else if((ar == "-F") || (ar == "--follow_symlinks")){
 			follw_symlk = true;
 		}
 		else if(ar == "--help"){
@@ -860,21 +890,25 @@ zo_sample::print_actions(zo_orga& org){
 
 void
 zo_dir::print_actions(zo_orga& org){
-	print_separator_line("%");
-	fprintf(stdout, "ALL_SELECTED SOUNDFONTS\n");  
-	print_separator_line("%");
-	for(const auto& sfe : all_selected_sfz){
-		zo_sfont_pt sf = sfe.second;
-		sf->print_actions(org);
+	if(! all_selected_sfz.empty()){
+		print_separator_line("%");
+		fprintf(stdout, "ALL_SELECTED SOUNDFONTS\n");  
+		print_separator_line("%");
+		for(const auto& sfe : all_selected_sfz){
+			zo_sfont_pt sf = sfe.second;
+			sf->print_actions(org);
+		}
 	}
-	print_separator_line("#");
-	fprintf(stdout, "ALL_SELECTED SAMPLES\n");  
-	print_separator_line("#");
-	for(const auto& sme : all_selected_spl){
-		zo_sample_pt sm = sme.second;
-		sm->print_actions(org);
+	if(! all_selected_spl.empty()){
+		print_separator_line("#");
+		fprintf(stdout, "ALL_SELECTED SAMPLES\n");  
+		print_separator_line("#");
+		for(const auto& sme : all_selected_spl){
+			zo_sample_pt sm = sme.second;
+			sm->print_actions(org);
+		}
 	}
-	
+		
 	ZO_CK(bad_spl != zo_null);
 	if(! bad_spl->all_bk_ref.empty()){
 		print_separator_line("!");
@@ -1174,6 +1208,41 @@ zo_orga::prepare_purge(){
 }
 
 void
+zo_sfont::prepare_copy(zo_orga& org){
+	ZO_CK(fpth.nxt_pth.empty());
+}
+
+void
+zo_sample::prepare_copy(zo_orga& org){
+	ZO_CK(fpth.nxt_pth.empty());
+	//zo_path pth = fpth.orig_pth;
+}
+
+void
+zo_orga::prepare_copy(){
+	if(dir_from == dir_to){
+		fprintf(stderr, "\n\n\n");
+		print_separator_line("&");
+		fprintf(stderr, "In a copy action --from and --to directories MUST be DIFFERENT\n");
+		print_separator_line("&");
+		fprintf(stderr, "\n\n\n");
+		all_selected_sfz.clear();
+		all_selected_spl.clear();
+		just_list = true;
+		return;
+	}
+	zo_orga& org = *this;
+	for(const auto& sfe : all_selected_sfz){
+		zo_sfont_pt sf = sfe.second;
+		sf->prepare_copy(org);
+	}
+	for(const auto& sme : all_selected_spl){
+		zo_sample_pt sm = sme.second;
+		sm->prepare_copy(org);
+	}
+}
+
+void
 zo_orga::organizer_main(const zo_str_vec& args){
 	fprintf(stderr, "organizer_main\n");
 	if(! get_args(args)){
@@ -1196,6 +1265,9 @@ zo_orga::organizer_main(const zo_str_vec& args){
 	}
 	if(oper == zo_action::purge){
 		prepare_purge();
+	}
+	if(oper == zo_action::copy){
+		prepare_copy();
 	}
 	
 	
