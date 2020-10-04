@@ -203,6 +203,9 @@ public:
 	bool 		did_it{false};
 	zo_ref_vec	all_ref;
 	
+	bool 		is_txt{false};
+	long 		tot_spl_ref{0};
+	
 	zo_sfont(const zo_path& fl){
 		ZO_CK(fl.is_absolute());
 		fpth.orig_pth = zo_path{fl};
@@ -228,6 +231,7 @@ public:
 	void prepare_tmp_file(const zo_path& tmp_pth);
 	
 	void prepare_add_sfz_ext();
+	void prepare_purge();
 	
 };
 
@@ -267,6 +271,7 @@ public:
 	void print_actions(zo_orga& org);
 	void do_actions(zo_orga& org);
 	void prepare_fix(zo_dir& dir);
+	void prepare_purge();
 };
 
 
@@ -310,6 +315,8 @@ public:
 	zo_sfont_map 		all_nxt_sfz;
 	zo_sample_map 		all_nxt_spl;
 
+	zo_sfont_map 		all_no_samples_sfz;
+	
 	zo_sample_pt 		bad_spl{zo_null};
 	
 	long 				tot_selected_spl{0};
@@ -425,6 +432,22 @@ public:
 		return sp;
 	}
 
+	zo_sfont_pt get_no_samples_soundfont(const zo_string& pth, zo_sfont_pt sf, bool& is_nw){
+		ZO_CK(sf != zo_null);
+		is_nw = false;
+		auto it = all_no_samples_sfz.find(pth);
+		if(it != all_no_samples_sfz.end()){
+			zo_sfont_pt sfz = it->second;
+			ZO_CK(sfz != zo_null);
+			return sfz;
+		}
+  
+		std::cout << ">>>FOUND_NO_VALID_SAMPLES_IN " << pth << "\n";
+		is_nw = true;
+		all_no_samples_sfz[pth] = sf;
+		return sf;
+	}
+	
 	void print_actions(zo_orga& org);
 	void do_actions(zo_orga& org);
 };
@@ -481,6 +504,7 @@ public:
 	
 	void prepare_fix();
 	void prepare_add_sfz_ext();
+	void prepare_purge();
 	void organizer_main(const zo_str_vec& args);
 };
 

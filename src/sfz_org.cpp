@@ -243,11 +243,13 @@ void
 zo_sfont::get_samples(zo_dir& dir){
 	zo_sfont_pt fl = this;
 	std::ifstream istm;
-	zo_path fl_org = fl->get_orig();
-	istm.open(fl_org.c_str(), std::ios::binary);
+	zo_path fl_orig = fl->get_orig();
+	istm.open(fl_orig.c_str(), std::ios::binary);
 	if(! istm.good() || ! istm.is_open()){
-		throw sfz_exception(sfz_cannot_open, fl_org);
+		throw sfz_exception(sfz_cannot_open, fl_orig);
 	}
+	
+	tot_spl_ref = 0;
 	
 	std::smatch sample_matches;
 	std::smatch opcode_matches;
@@ -297,12 +299,13 @@ zo_sfont::get_samples(zo_dir& dir){
 		//fprintf(stdout, "sample_f_nam:'%s'\n", lref.c_str());
 		
 		auto ec = std::error_code{};
-		zo_path fx_ref = fix_ref_path(lref, fl_org, ec);
+		zo_path fx_ref = fix_ref_path(lref, fl_orig, ec);
 		
 		if(ec){
-			dir.bad_spl->all_bk_ref[fl_org] = fl;
+			dir.bad_spl->all_bk_ref[fl_orig] = fl;
 			continue;
 		}
+		tot_spl_ref++;
 		
 		//fprintf(stdout, "rpth:'%s'\n", rpth.c_str());
 		//fprintf(stdout, "pnt:'%s'\n", pnt.c_str());
@@ -312,7 +315,7 @@ zo_sfont::get_samples(zo_dir& dir){
 		ZO_CK(spl != zo_null);		
 		ZO_CK(spl->get_orig() == fx_ref);
 		
-		spl->all_bk_ref[fl_org] = fl;
+		spl->all_bk_ref[fl_orig] = fl;
 		
 		zo_sample_pt sspl = dir.get_selected_sample(fx_ref, spl, is_nw, false);
 		if(sspl == zo_null){
@@ -327,8 +330,13 @@ zo_sfont::get_samples(zo_dir& dir){
 		
 		if(ec){
 			nw_ref->bad_pth = lref;
-			fprintf(stderr, "bad_ref:'%s' in file %s\n", lref.c_str(), fl_org.c_str());
+			fprintf(stderr, "bad_ref:'%s' in file %s\n", lref.c_str(), fl_orig.c_str());
 		}
+	}
+	
+	if(tot_spl_ref == 0){
+		bool is_nw = false;
+		dir.get_no_samples_soundfont(fl_orig, fl, is_nw);
 	}
 }
 
@@ -363,15 +371,23 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 		}
 		return;
 	}
+	bool purging = (oper == zo_action::purge);
+	bool normal_sfz = true;
 	
 	if((ft == zo_ftype::soundfont) && is_sfz){
 		zo_sfont_pt sf = get_read_soundfont(apth, is_nw);
-		if(is_nw){
-			sf->get_samples(dir);
+		if(purging){
+			sf->is_txt = is_text_file(apth);
+			normal_sfz = sf->is_txt;
 		}
-		bool has_ref = ! sf->all_ref.empty();
-		if(! only_with_ref || has_ref){
-			get_selected_soundfont(apth, sf, is_nw);
+		if(normal_sfz){
+			if(is_nw){
+				sf->get_samples(dir);
+			}
+			bool has_ref = ! sf->all_ref.empty();
+			if(! only_with_ref || has_ref){
+				get_selected_soundfont(apth, sf, is_nw);
+			}
 		}
 	}
 	if((ft == zo_ftype::sample) && ! is_sfz){
@@ -532,14 +548,17 @@ print_help(const zo_str_vec& args){
 	-p --purge
 		purge action. Rest of parameters will decide what and how.
 		moves all non utf8 files with '.sfz' ext to --to directory.
-		moves all files with '.sfz' extension and no sample references to --to directory.
-		moves all non-referenced samples (files without '.sfz' extension) to --to directory.
+		moves all sfz soundfonts with no valid sample references under the --from directory, to the --to directory.
+		moves all samples with no sample references in sfz soundfonts under the --from directory, to --to directory.
+		Use with care because all this operations are with respect to selected files. 
+		Safe use would be by selecting a whole (--recursive) supposed consistent --from directory of sfz soundfonts and samples.
 	-a --add_sfz_ext
 		add_sfz_ext action. Add the extention ".sfz" to selected files. Rest of parameters will decide what and how.
 		Only does it to utf8 encoded files checking the first Kbyte and only if it does not end with the '.sfz' extension already.
 	-x --fix
 		fix action. moves all selected sfz sounfonts and samples (not directories) so that they do not have odd (non alphanumeric) characters. 
-		All non alphanumeric characters are replaced with _ (underscore). Conflicts are resolved before renaming by a counter, at the begining of the name, that increments until there is no conflict.
+		All non alphanumeric characters are replaced with _ (underscore). 
+		Conflicts are resolved before renaming by a counter, at the begining of the name, that increments until there is no conflict.
 		Use --match and --substitute toghether with --move if more control is desired.
 	-f --from <source_dir>
 		Source directory. All sfz soundfonts and samples (referenced files by sfz files) subject of action MUST be under this directory.
@@ -547,7 +566,8 @@ print_help(const zo_str_vec& args){
 	-t --to <dest_dir>
 		Destination directory. If no --from option is given the source directory will be the same as this.
 		If the --to directory is not under of the --from directory a --move of sfz soundfonts will only copy any referenced sample.
-		If the --to directory is under of the --from directory a --copy of sfz soundfonts will not copy any referenced sample, only preserve consistency, unless the --samples_too option is given.
+		If the --to directory is under of the --from directory a --copy of sfz soundfonts will not copy any referenced sample, 
+		only preserve consistency, unless the --samples_too option is given.
 	-S --samples_too
 		Copy samples too.
 	-k --keep
@@ -578,7 +598,9 @@ print_help(const zo_str_vec& args){
 	2. If no --from neither --to directories are given the current directory is taken as both.
 	3. A file is subject of action if it is selected or if it has a reference to a selected file. i.e. a sfz soundfont file that has a reference to a selected sample.
 	4. If one or more samples are selected then all sfz files under --from directory are read (to find posible references to the selected samples).
-	5. A file (or directory) is selected if it is listed explicitly in the [FILE] ... portion of the command line or if the option --recursive is given and it is under one of the selected directories.
+	5. A file (or directory) is selected:
+		If it is listed explicitly in the [FILE] ... portion of the command line or,
+		If the option --recursive is given and it is under one of the selected directories.
 	6. If no files are selected then ALL files in the current directory are selected.
 	7. The default policy is --keep.
 		
@@ -883,6 +905,10 @@ zo_sfont::do_actions(zo_orga& org){
 	did_it = true;
 	
 	zo_path nxt = get_next();
+	if(nxt.empty()){
+		fprintf(stdout, "SKIPPING SOUNDFONT '%s'\n", get_orig().c_str());
+		return;
+	}
 	fs::create_directories(nxt.parent_path());
 	
 	bool is_mv = org.is_move();
@@ -902,6 +928,10 @@ zo_sample::do_actions(zo_orga& org){
 	did_it = true;
 	
 	zo_path nxt = get_next();
+	if(nxt.empty()){
+		fprintf(stdout, "SKIPPING SAMPLE '%s'\n", get_orig().c_str());
+		return;
+	}
 	fs::create_directories(nxt.parent_path());
 	
 	bool is_mv = org.is_move();
@@ -1011,6 +1041,30 @@ zo_orga::prepare_add_sfz_ext(){
 	for(const auto& sfe : all_selected_sfz){
 		zo_sfont_pt sf = sfe.second;
 		sf->prepare_add_sfz_ext();
+	}
+}
+
+void
+zo_sfont::prepare_purge(){
+	ZO_CK(fpth.nxt_pth.empty());
+	//fpth.nxt_pth = fpth.orig_pth + ".sfz";
+}
+
+void
+zo_sample::prepare_purge(){
+	ZO_CK(fpth.nxt_pth.empty());
+	//fpth.nxt_pth = fpth.orig_pth + ".sfz";
+}
+
+void
+zo_orga::prepare_purge(){
+	for(const auto& sfe : all_selected_sfz){
+		zo_sfont_pt sf = sfe.second;
+		sf->prepare_purge();
+	}
+	for(const auto& sme : all_selected_spl){
+		zo_sample_pt sm = sme.second;
+		sm->prepare_purge();
 	}
 }
 
