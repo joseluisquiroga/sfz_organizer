@@ -61,24 +61,24 @@ fix_name(zo_string& nm){
 }
 
 void
-incr_name(zo_string& nm){
+set_num_name(zo_string& nm, long val){
+	zo_string vstr = std::to_string(val);
 	std::smatch incr_matches;
 	if(regex_search(nm, incr_matches, ZO_INCR_PATTERN)){
 		ZO_CK(incr_matches.size() > 1);
 		zo_string m0 = incr_matches[0];
-		long val = std::stol(incr_matches[1]);
 		zo_string pfx = incr_matches.prefix().str();
 		zo_string sfx = incr_matches.suffix().str();
-		nm = pfx + "_c" + std::to_string(val + 1) + "." + sfx;
+		nm = pfx + "_c" + vstr + "." + sfx;
 		return;
 	} 
 	if(regex_search(nm, incr_matches, ZO_INCR_DOT_PATTERN)){
 		zo_string pfx = incr_matches.prefix().str();
 		zo_string sfx = incr_matches.suffix().str();
-		nm = pfx + "_c1." + sfx;
+		nm = pfx + "_c" + vstr + "." + sfx;
 		return;
 	}
-	nm += "_c1.";
+	nm += "_c" + vstr + ".";
 	return;
 }
 
@@ -972,56 +972,45 @@ zo_dir::print_actions(zo_orga& org){
 	}
 }
 
-zo_path
-fix_path(const zo_string& pth_str, bool is_fst){
-	zo_path pth = pth_str;
-	zo_string nm = pth.filename();
-	if(is_fst){
-		fix_name(nm);
-	} else {
-		incr_name(nm);
-	}
-	zo_path nx_pth = pth.parent_path() / nm;
-	return nx_pth;
-}
-
 void
-zo_fname::fix_next(){
-	if(nxt_pth.empty()){
-		nxt_pth = fix_path(orig_pth, true);
-		return;
+zo_fname::calc_fixed(zo_dir& dir){
+	ZO_CK(nxt_pth.empty());
+	zo_path pth = orig_pth;
+	zo_string nm = pth.filename();
+	fix_name(nm);
+	zo_path nx_pth = pth.parent_path() / nm;
+	
+	zo_last_confl_pt the_cfl = zo_null;
+	auto it = dir.all_unique_nxt.find(nx_pth);
+	if(it != dir.all_unique_nxt.end()){
+		the_cfl = it->second;
+		ZO_CK(the_cfl != zo_null);
+		the_cfl->val++;
+		set_num_name(nm, the_cfl->val);
+		nx_pth = pth.parent_path() / nm;
+		
+		it = dir.all_unique_nxt.find(nx_pth);
 	}
-	nxt_pth = fix_path(nxt_pth, false);
+	ZO_CK(it == dir.all_unique_nxt.end());
+	
+	if(the_cfl == zo_null){
+		the_cfl = make_last_confl_pt();
+		ZO_CK(the_cfl->val == 0);
+	}
+	dir.all_unique_nxt[nx_pth] = the_cfl;
+	nxt_pth = nx_pth;
 }
 
 void
 zo_sfont::prepare_fix(zo_dir& dir){
-	zo_sfont_pt sf = this;
 	ZO_CK(fpth.nxt_pth.empty());
-	fpth.fix_next();
-	bool is_nw = false;
-	zo_sfont_pt nx_sf = dir.get_next_soundfont(fpth.nxt_pth, sf, is_nw);
-	ZO_MARK_USED(nx_sf);
-	while(! is_nw){
-		fpth.fix_next();
-		nx_sf = dir.get_next_soundfont(fpth.nxt_pth, sf, is_nw);
-	}
-	ZO_CK(nx_sf == sf);
+	fpth.calc_fixed(dir);
 }
 
 void
 zo_sample::prepare_fix(zo_dir& dir){
-	zo_sample_pt sp = this;
 	ZO_CK(fpth.nxt_pth.empty());
-	fpth.fix_next();
-	bool is_nw = false;
-	zo_sample_pt nx_sp = dir.get_next_sample(fpth.nxt_pth, sp, is_nw);
-	ZO_MARK_USED(nx_sp);
-	while(! is_nw){
-		fpth.fix_next();
-		nx_sp = dir.get_next_sample(fpth.nxt_pth, sp, is_nw);
-	}
-	ZO_CK(nx_sp == sp);
+	fpth.calc_fixed(dir);
 }
 
 void
@@ -1048,14 +1037,25 @@ test_fix(int argc, char* argv[]){
 
 	fprintf(stdout, "%s\n", args[1].c_str());
 	
-	zo_string nm = args[1];
-	zo_path fx1 = fix_path(nm, true);
-	fprintf(stdout, "%s\n", fx1.c_str());
-
-	zo_string unm = args[1];
-	zo_path fx2 = fix_path(unm, false);
-	fprintf(stdout, "%s\n", fx2.c_str());
+	zo_dir dd;
+	if(args.size() > 2){
+		long num_fix = std::stol(args[2]);
+		for(int aa = 0; aa < num_fix; aa++){
+			zo_fname fpth;
+			fpth.orig_pth = args[1];
+			ZO_CK(fpth.nxt_pth.empty());
+			fpth.calc_fixed(dd);
+			fprintf(stdout, "nxt=%s\n", fpth.nxt_pth.c_str());
+		}
+	}
 	
+	fprintf(stdout, "-------------\n");
+	zo_fname fpth2;
+	ZO_CK(fpth2.nxt_pth.empty());
+	fpth2.orig_pth = args[1];
+	fpth2.calc_fixed(dd);
+	fprintf(stdout, "calc_fixed=%s\n", fpth2.nxt_pth.c_str());
+
 	return 0;
 }
 
@@ -1296,13 +1296,13 @@ zo_orga::calc_target(bool had_dir_to){
 void
 zo_sfont::prepare_copy_or_move(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	org.calc_target_name(fpth);
+	org.calc_target_name(fpth, can_move);
 }
 
 void
 zo_sample::prepare_copy_or_move(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	org.calc_target_name(fpth);
+	org.calc_target_name(fpth, true);
 }
 
 void
@@ -1358,6 +1358,11 @@ zo_orga::organizer_main(const zo_str_vec& args){
 }
 
 void
-zo_orga::calc_target_name(zo_fname& nam){
+zo_orga::calc_target_name(zo_fname& nam, bool sf_can_mv){
+	if(! sf_can_mv){
+		
+	}
+	//long tot_src = tot_cp_or_mv();
+	
 }
 

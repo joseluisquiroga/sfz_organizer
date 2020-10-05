@@ -166,10 +166,10 @@ public:
 	zo_string 	nxt_pth{""};
 
 	void print_actions(zo_orga& org);
-	void fix_next();
 	void keep_same(){
 		nxt_pth = orig_pth;
 	}
+	void calc_fixed(zo_dir& dir);
 };
 
 class zo_ref {
@@ -264,7 +264,6 @@ using zo_sfont_map = std::map<zo_string, zo_sfont_pt>;
 using zo_sample_map = std::map<zo_string, zo_sample_pt>;
 using zo_file_set = std::set<zo_string>;
 
-
 class zo_sample {
 	zo_sample(zo_sample& rr) = delete;
 	zo_sample(zo_sample&& rr) = delete;
@@ -323,6 +322,21 @@ make_sample_pt(const zo_path& pth){
 }
 
 
+class zo_last_confl {
+public:
+	long 	val{0};
+};
+
+using zo_last_confl_pt = zo_last_confl*;
+using zo_conflict_map = std::map<zo_string, zo_last_confl_pt>;
+
+inline 
+zo_last_confl_pt
+make_last_confl_pt(){
+	return new zo_last_confl;
+}
+
+
 class zo_dir {
 	zo_dir(zo_dir& rr) = delete;
 	zo_dir(zo_dir&& rr) = delete;
@@ -340,8 +354,7 @@ public:
 	zo_sfont_map 		all_selected_sfz;
 	zo_sample_map 		all_selected_spl;
 	
-	zo_sfont_map 		all_nxt_sfz;
-	zo_sample_map 		all_nxt_spl;
+	zo_conflict_map		all_unique_nxt;
 
 	zo_sample_pt 		bad_spl{zo_null};
 	
@@ -429,36 +442,6 @@ public:
 		return sp;
 	}
 	
-	zo_sfont_pt get_next_soundfont(const zo_string& pth, zo_sfont_pt sf, bool& is_nw){
-		ZO_CK(sf != zo_null);
-		is_nw = false;
-		auto it = all_nxt_sfz.find(pth);
-		if(it != all_nxt_sfz.end()){
-			zo_sfont_pt sfz = it->second;
-			ZO_CK(sfz != zo_null);
-			return sfz;
-		}
-  
-		is_nw = true;
-		all_nxt_sfz[pth] = sf;
-		return sf;
-	}
-	
-	zo_sample_pt get_next_sample(const zo_string& pth, zo_sample_pt sp, bool& is_nw){
-		ZO_CK(sp != zo_null);
-		is_nw = false;
-		auto it = all_nxt_spl.find(pth);
-		if(it != all_nxt_spl.end()){
-			zo_sample_pt spl = it->second;
-			ZO_CK(spl != zo_null);
-			return spl;
-		}
-  
-		is_nw = true;
-		all_nxt_spl[pth] = sp;
-		return sp;
-	}
-	
 	long tot_cp_or_mv(){
 		long tot = tot_selected_sfz + tot_selected_spl;
 		return tot;
@@ -529,7 +512,7 @@ public:
 	}
 	
 	bool calc_target(bool had_dir_to);
-	void calc_target_name(zo_fname& nam);
+	void calc_target_name(zo_fname& nam, bool sf_can_mv);
 
 	void prepare_fix();
 	void prepare_add_sfz_ext();
