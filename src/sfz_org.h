@@ -199,7 +199,7 @@ public:
 		num_line = ZO_INVALID_LINE_NUM;
 		owner = zo_null;
 		fref = zo_null;
-		fprintf(stdout, "Calling ~zo_ref\n");
+		//fprintf(stdout, "Calling ~zo_ref\n");
 	}
 	
 	const zo_string& get_orig();
@@ -226,6 +226,8 @@ public:
 	
 	bool 		is_txt{false};
 	long 		tot_spl_ref{0};
+
+	bool 		can_move{false};
 	
 	zo_sfont(const zo_path& fl){
 		ZO_CK(fl.is_absolute());
@@ -233,7 +235,7 @@ public:
 	}
 	
 	~zo_sfont(){
-		fprintf(stdout, "Calling ~zo_sfont\n");
+		//fprintf(stdout, "Calling ~zo_sfont\n");
 	}
 
 	const zo_string& get_orig(){
@@ -253,7 +255,7 @@ public:
 	
 	void prepare_add_sfz_ext();
 	void prepare_purge(zo_orga& org);
-	void prepare_copy(zo_orga& org);
+	void prepare_copy_or_move(zo_orga& org);
 	
 };
 
@@ -280,7 +282,7 @@ public:
 	}
 	
 	~zo_sample(){
-		fprintf(stdout, "Calling ~zo_sample\n");
+		//fprintf(stdout, "Calling ~zo_sample\n");
 	}
 	
 	const zo_string& get_orig(){
@@ -295,7 +297,7 @@ public:
 	void do_actions(zo_orga& org);
 	void prepare_fix(zo_dir& dir);
 	void prepare_purge(zo_orga& org);
-	void prepare_copy(zo_orga& org);
+	void prepare_copy_or_move(zo_orga& org);
 };
 
 
@@ -343,6 +345,7 @@ public:
 
 	zo_sample_pt 		bad_spl{zo_null};
 	
+	long 				tot_selected_sfz{0};
 	long 				tot_selected_spl{0};
 	
 	zo_dir(){
@@ -350,7 +353,7 @@ public:
 	}
 	
 	~zo_dir(){
-		fprintf(stdout, "Calling ~zo_dir\n");
+		//fprintf(stdout, "Calling ~zo_dir\n");
 	}
 	
 	zo_sfont_pt get_read_soundfont(const zo_path& pth, bool& is_nw){
@@ -455,6 +458,11 @@ public:
 		all_nxt_spl[pth] = sp;
 		return sp;
 	}
+	
+	long tot_cp_or_mv(){
+		long tot = tot_selected_sfz + tot_selected_spl;
+		return tot;
+	}
 
 	void print_actions(zo_orga& org);
 	void do_actions(zo_orga& org);
@@ -484,14 +492,21 @@ public:
 	
 	zo_string tmp_nam{".temp_sfz_organizer_file"};
 	zo_path tmp_pth{""};
-	
+
 	zo_str_vec f_names;
+	
+	zo_path last_pth{""};
+	bool last_exists{false};
+	bool last_is_dir{false};
+	bool gave_names{false};
+
+	zo_path target{""};
 	
 	zo_orga(){
 	}
 	
 	~zo_orga(){
-		fprintf(stdout, "Calling ~zo_orga\n");
+		//fprintf(stdout, "Calling ~zo_orga\n");
 	}
 	
 	void ignore_purged_dir();
@@ -513,10 +528,13 @@ public:
 		return tmp_pth;
 	}
 	
+	bool calc_target(bool had_dir_to);
+	void calc_target_name(zo_fname& nam);
+
 	void prepare_fix();
 	void prepare_add_sfz_ext();
 	void prepare_purge();
-	void prepare_copy();
+	void prepare_copy_or_move();
 	void organizer_main(const zo_str_vec& args);
 };
 
