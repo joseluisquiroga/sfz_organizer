@@ -48,7 +48,7 @@ int sfz_organizer_main(int argc, char* argv[]){
 }
 
 void
-fix_name(zo_string& nm){
+normalize_name(zo_string& nm){
 	std::size_t pos = nm.rfind('.');
 	for(char& ch : nm){
 		if(! isalnum(ch)){
@@ -583,6 +583,7 @@ print_help(const zo_str_vec& args){
 		Just print what it would do without actualy doing it.
 	-m --move
 		move action. Rest of parameters will decide what and how.
+		If the --to directory is not under of the --from directory the action becomes a --copy.
 	-c --copy
 		copy action. Rest of parameters will decide what and how.
 	-p --purge
@@ -594,8 +595,8 @@ print_help(const zo_str_vec& args){
 	-a --add_sfz_ext
 		add_sfz_ext action. Add the extention ".sfz" to selected files. Rest of parameters will decide what and how.
 		Only does it to utf8 encoded files checking the first Kbyte and only if it does not end with the '.sfz' extension already.
-	-x --fix
-		fix action. moves all selected sfz sounfonts and samples (not directories) so that they do not have odd (non alphanumeric) characters. 
+	-N --normalize
+		normalize action. moves all selected sfz sounfonts and samples (not directories) so that they do not have odd (non alphanumeric) characters. 
 		All non alphanumeric characters are replaced with _ (underscore). 
 		Conflicts are resolved before renaming by a counter, at the begining of the name, that increments until there is no conflict.
 		Use --match and --substitute toghether with --move if more control is desired.
@@ -605,12 +606,13 @@ print_help(const zo_str_vec& args){
 		Read also hidden files.
 		Any file or directory name that starts with '.' is considdered hidden and by default it is not read.
 	-f --from <source_dir>
-		Source directory. All sfz soundfonts and samples (referenced files by sfz files) subject of action MUST be under this directory.
-		If no --to option is given the --to directory will be the same as this.
+		Source directory. 
+		Consistency of action is only kept up to this directory, meaning:
+			All sfz soundfonts and samples (referenced files by sfz files) subject of action MUST be under this directory.
+		If no --from option is given the --from directory will be the current directory.
 	-t --to <dest_dir>
-		Destination directory. If no --from option is given the source directory will be the same as this.
-		In a --move, if the --to directory is not under of the --from directory, it will only copy any referenced sample to the target to 
-		keep consistency of other sfz soundfonts.
+		Destination directory. 
+		If no --to option is given the --to directory will be the same as the --from directory.
 	-A --samples_too
 		Copy samples too.
 		In a  --copy, if the target is under of the --from directory copy the samples too. By default it will only change the references in
@@ -629,6 +631,8 @@ print_help(const zo_str_vec& args){
 		Only select files with '.sfz' extension.
 	-F --follow_symlinks
 		Follow symlinks when reading directories.
+	--skip_normalize
+		Do not normalize names. Not recomended because it deactivates conflict solving.
 	--help 
 	--version 
 	
@@ -647,21 +651,21 @@ print_help(const zo_str_vec& args){
 		If just ONE file is selected in the command line the current directory will be the target.
 		If not --to directory, no --substitute option are given and MORE than one file is selected in the command line, the last one will be the target.
 		
-	3. If no --from neither --to directories are given the current directory is taken as both.
+	3. A file is subject of action if it is selected or if it has a reference to a selected file. i.e. a sfz soundfont file that has a reference to a selected sample.
 	
-	4. A file is subject of action if it is selected or if it has a reference to a selected file. i.e. a sfz soundfont file that has a reference to a selected sample.
+	4. If one or more samples are selected then ALL sfz files under --from directory are read (to find posible references to the selected samples).
 	
-	5. If one or more samples are selected then all sfz files under --from directory are read (to find posible references to the selected samples).
-	
-	6. A file (or directory) is selected:
+	5. A file (or directory) is selected:
 		If it is listed explicitly in the [FILE] ... portion of the command line or,
 		If the option --recursive is given and it is under one of the selected directories.
 		
-	7. If no files are selected then ALL files in the current directory are selected.
+	6. If no files are selected then ALL files in the current directory are selected.
+	
+	7. By default all sfz soundfont and sample names are normalized during ANY action.
 	
 	8. The default policy is --keep.
 	
-	9. If more than one action (--move, --copy, --purge, --add_sfz_ext, --fix) is given, only the last one will be executed.
+	9. If more than one action (--move, --copy, --purge, --add_sfz_ext, --normalize) is given, only the last one will be executed.
 		
 	)help", prg_nm.c_str(), prg_nm.c_str());
 	fprintf(stdout, "\n");
@@ -714,8 +718,8 @@ zo_orga::get_args(const zo_str_vec& args){
 		else if((ar == "-a") || (ar == "--add_sfz_ext")){
 			oper = zo_action::add_sfz;
 		}
-		else if((ar == "-x") || (ar == "--fix")){
-			oper = zo_action::fix;
+		else if((ar == "-N") || (ar == "--normalize")){
+			oper = zo_action::normalize;
 		}
 		else if((ar == "-i") || (ar == "--ignore")){
 			it++; if(it == args.end()){ break; }
@@ -765,6 +769,9 @@ zo_orga::get_args(const zo_str_vec& args){
 		else if((ar == "-F") || (ar == "--follow_symlinks")){
 			follw_symlk = true;
 		}
+		else if(ar == "--skip_normalize"){
+			skip_normalize = true;
+		}
 		else if(ar == "--help"){
 			print_help(args);
 			return false;
@@ -793,15 +800,11 @@ zo_orga::get_args(const zo_str_vec& args){
 	}
 	
 	bool had_dir_to = ! dir_to.empty();
-	if(dir_from.empty() && ! dir_to.empty()){
-		dir_from = dir_to;
-	}
-	if(! dir_from.empty() && dir_to.empty()){
-		dir_to = dir_from;
-	}
-	if(dir_from.empty() && dir_to.empty()){
-		dir_to = ".";
+	if(dir_from.empty()){
 		dir_from = ".";
+	}
+	if(dir_to.empty()){
+		dir_to = dir_from;
 	}
 	if(! fs::exists(dir_from)){
 		fprintf(stderr, "directory %s given in option --from does not exist\n", dir_from.c_str());
@@ -811,15 +814,23 @@ zo_orga::get_args(const zo_str_vec& args){
 		fprintf(stderr, "directory %s given in option --to does not exist\n", dir_to.c_str());
 		return false;
 	}
-	dir_from = fs::canonical(dir_to);
+	dir_from = fs::canonical(dir_from);
 	dir_to = fs::canonical(dir_to);
 	
-	fprintf(stdout, "Using dir from %s\n", dir_from.c_str());
-	fprintf(stdout, "Using dir to %s\n", dir_to.c_str());
+	fprintf(stdout, "Using dir from '%s'\n", dir_from.c_str());
+	fprintf(stdout, "Using dir to '%s'\n", dir_to.c_str());
 	
 	base_pth = dir_from;
 	tmp_pth = base_pth / tmp_nam;
 	fs::create_directories(tmp_pth.parent_path());
+	fprintf(stdout, "Using temp file path '%s'\n", tmp_pth.c_str());
+	
+	zo_string dto = dir_to;
+	bool is_under = (dto.rfind(dir_from, 0) == 0);
+	if(! is_under && (oper == zo_action::move)){
+		fprintf(stdout, "Dir 'to' is not under dir 'from' CHANGING action to copy\n");
+		oper = zo_action::copy;
+	}
 
 	if(oper == zo_action::copy){
 		bool ok = calc_target(had_dir_to);
@@ -973,56 +984,27 @@ zo_dir::print_actions(zo_orga& org){
 }
 
 void
-zo_fname::calc_fixed(zo_dir& dir){
-	ZO_CK(nxt_pth.empty());
-	zo_path pth = orig_pth;
-	zo_string nm = pth.filename();
-	fix_name(nm);
-	zo_path nx_pth = pth.parent_path() / nm;
-	
-	zo_last_confl_pt the_cfl = zo_null;
-	auto it = dir.all_unique_nxt.find(nx_pth);
-	if(it != dir.all_unique_nxt.end()){
-		the_cfl = it->second;
-		ZO_CK(the_cfl != zo_null);
-		the_cfl->val++;
-		set_num_name(nm, the_cfl->val);
-		nx_pth = pth.parent_path() / nm;
-		
-		it = dir.all_unique_nxt.find(nx_pth);
-	}
-	ZO_CK(it == dir.all_unique_nxt.end());
-	
-	if(the_cfl == zo_null){
-		the_cfl = make_last_confl_pt();
-		ZO_CK(the_cfl->val == 0);
-	}
-	dir.all_unique_nxt[nx_pth] = the_cfl;
-	nxt_pth = nx_pth;
-}
-
-void
-zo_sfont::prepare_fix(zo_dir& dir){
+zo_sfont::prepare_normalize(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	fpth.calc_fixed(dir);
+	fpth.calc_next(org);
 }
 
 void
-zo_sample::prepare_fix(zo_dir& dir){
+zo_sample::prepare_normalize(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	fpth.calc_fixed(dir);
+	fpth.calc_next(org);
 }
 
 void
-zo_orga::prepare_fix(){
-	zo_dir& dir = *this; 
+zo_orga::prepare_normalize(){
+	zo_orga& org = *this; 
 	for(const auto& sfe : all_selected_sfz){
 		zo_sfont_pt sf = sfe.second;
-		sf->prepare_fix(dir);
+		sf->prepare_normalize(org);
 	}
 	for(const auto& sme : all_selected_spl){
 		zo_sample_pt sm = sme.second;
-		sm->prepare_fix(dir);
+		sm->prepare_normalize(org);
 	}
 }
 
@@ -1037,14 +1019,14 @@ test_fix(int argc, char* argv[]){
 
 	fprintf(stdout, "%s\n", args[1].c_str());
 	
-	zo_dir dd;
+	zo_orga dd;
 	if(args.size() > 2){
 		long num_fix = std::stol(args[2]);
 		for(int aa = 0; aa < num_fix; aa++){
 			zo_fname fpth;
 			fpth.orig_pth = args[1];
 			ZO_CK(fpth.nxt_pth.empty());
-			fpth.calc_fixed(dd);
+			fpth.calc_next(dd);
 			fprintf(stdout, "nxt=%s\n", fpth.nxt_pth.c_str());
 		}
 	}
@@ -1053,8 +1035,8 @@ test_fix(int argc, char* argv[]){
 	zo_fname fpth2;
 	ZO_CK(fpth2.nxt_pth.empty());
 	fpth2.orig_pth = args[1];
-	fpth2.calc_fixed(dd);
-	fprintf(stdout, "calc_fixed=%s\n", fpth2.nxt_pth.c_str());
+	fpth2.calc_next(dd);
+	fprintf(stdout, "fixed=%s\n", fpth2.nxt_pth.c_str());
 
 	return 0;
 }
@@ -1228,8 +1210,7 @@ void
 zo_sfont::prepare_purge(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
 	if(! is_txt || (tot_spl_ref == 0)){
-		zo_path pth = fpth.orig_pth;
-		fpth.nxt_pth = org.dir_to / "purged" / get_from_rel_path(pth, org.dir_from);
+		fpth.calc_next(org);
 		return;
 	}
 }
@@ -1238,8 +1219,7 @@ void
 zo_sample::prepare_purge(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
 	if(all_bk_ref.empty()){
-		zo_path pth = fpth.orig_pth;
-		fpth.nxt_pth = org.dir_to / "purged" / get_from_rel_path(pth, org.dir_from);
+		fpth.calc_next(org);
 		return;
 	}
 }
@@ -1296,13 +1276,13 @@ zo_orga::calc_target(bool had_dir_to){
 void
 zo_sfont::prepare_copy_or_move(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	org.calc_target_name(fpth, can_move);
+	fpth.calc_next(org, can_move);
 }
 
 void
 zo_sample::prepare_copy_or_move(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	org.calc_target_name(fpth, true);
+	fpth.calc_next(org);
 }
 
 void
@@ -1329,8 +1309,8 @@ zo_orga::organizer_main(const zo_str_vec& args){
 	zo_orga& org = *this;
 	read_selected();
 	
-	if(oper == zo_action::fix){
-		prepare_fix();
+	if(oper == zo_action::normalize){
+		prepare_normalize();
 	}
 	if(oper == zo_action::add_sfz){
 		prepare_add_sfz_ext();
@@ -1358,11 +1338,57 @@ zo_orga::organizer_main(const zo_str_vec& args){
 }
 
 void
-zo_orga::calc_target_name(zo_fname& nam, bool sf_can_mv){
-	if(! sf_can_mv){
-		
+zo_fname::calc_next(zo_orga& org, bool can_mv){
+	ZO_CK(nxt_pth.empty());
+	std::error_code ec;
+	zo_path pth = orig_pth;
+	zo_path dir_pth = pth.parent_path();
+	zo_path rel_dir = find_relative(dir_pth, org.dir_from, ec);
+	ZO_CK(! ec);
+	
+	zo_string nm = pth.filename();
+	if(! org.skip_normalize){
+		normalize_name(nm);
 	}
 	//long tot_src = tot_cp_or_mv();
 	
+	zo_path dir_to = org.dir_to;
+	if(org.oper == zo_action::copy){
+	}
+	if(org.oper == zo_action::move){
+		if(! can_mv){
+			dir_to = org.dir_from;
+		}
+	}
+	if(org.oper == zo_action::purge){
+		dir_to = dir_to / "purged";
+	}
+	zo_path nx_pth = dir_to / rel_dir / nm;
+	
+	zo_last_confl_pt the_cfl = zo_null;
+	auto it = org.all_unique_nxt.find(nx_pth);
+	if(it != org.all_unique_nxt.end()){
+		org.tot_conflict++;
+		if(org.skip_normalize){
+			return;
+		}
+		
+		the_cfl = it->second;
+		ZO_CK(the_cfl != zo_null);
+		the_cfl->val++;
+		set_num_name(nm, the_cfl->val);
+		
+		nx_pth = dir_to / rel_dir / nm;
+		
+		it = org.all_unique_nxt.find(nx_pth);
+	}
+	ZO_CK(it == org.all_unique_nxt.end());
+	
+	if(the_cfl == zo_null){
+		the_cfl = make_last_confl_pt();
+		ZO_CK(the_cfl->val == 0);
+	}
+	org.all_unique_nxt[nx_pth] = the_cfl;
+	nxt_pth = nx_pth;
 }
 

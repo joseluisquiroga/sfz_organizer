@@ -105,7 +105,7 @@ enum class zo_action {
 	move,
 	copy,
 	purge,
-	fix,
+	normalize,
 	add_sfz
 };
 
@@ -119,8 +119,8 @@ zo_string get_action_str(zo_action ac){
 			return "copy";
 		case zo_action::purge:
 			return "purge";
-		case zo_action::fix:
-			return "fix";
+		case zo_action::normalize:
+			return "normalize";
 		case zo_action::add_sfz:
 			return "add_sfz";
 		default:
@@ -144,7 +144,7 @@ bool
 is_move_oper(zo_action act){
 	switch(act){
 		case zo_action::add_sfz: 
-		case zo_action::fix: 
+		case zo_action::normalize: 
 		case zo_action::purge: 
 		case zo_action::move: 
 			return true;
@@ -169,7 +169,7 @@ public:
 	void keep_same(){
 		nxt_pth = orig_pth;
 	}
-	void calc_fixed(zo_dir& dir);
+	void calc_next(zo_orga& org, bool can_mv = true);
 };
 
 class zo_ref {
@@ -250,7 +250,7 @@ public:
 	
 	void print_actions(zo_orga& org);	
 	void do_actions(zo_orga& org);
-	void prepare_fix(zo_dir& dir);
+	void prepare_normalize(zo_orga& org);
 	void prepare_tmp_file(const zo_path& tmp_pth);
 	
 	void prepare_add_sfz_ext();
@@ -294,7 +294,7 @@ public:
 	
 	void print_actions(zo_orga& org);
 	void do_actions(zo_orga& org);
-	void prepare_fix(zo_dir& dir);
+	void prepare_normalize(zo_orga& org);
 	void prepare_purge(zo_orga& org);
 	void prepare_copy_or_move(zo_orga& org);
 };
@@ -355,6 +355,7 @@ public:
 	zo_sample_map 		all_selected_spl;
 	
 	zo_conflict_map		all_unique_nxt;
+	long 				tot_conflict{0};
 
 	zo_sample_pt 		bad_spl{zo_null};
 	
@@ -464,6 +465,7 @@ public:
 	bool follw_symlk = false;
 	bool samples_too = false;
 	bool hidden_too = false;
+	bool skip_normalize = false;
 	
 	zo_policy pol{zo_policy::keep}; // replace | keep options
 	
@@ -512,9 +514,8 @@ public:
 	}
 	
 	bool calc_target(bool had_dir_to);
-	void calc_target_name(zo_fname& nam, bool sf_can_mv);
 
-	void prepare_fix();
+	void prepare_normalize();
 	void prepare_add_sfz_ext();
 	void prepare_purge();
 	void prepare_copy_or_move();
