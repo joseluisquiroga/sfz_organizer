@@ -158,14 +158,14 @@ relative(const zo_path& pth, const zo_path& base, std::error_code& ec){
 
 const zo_string&
 zo_ref::get_orig(){
-	ZO_CK(fref != zo_null);
-	return fref->get_orig();
+	ZO_CK(sref != zo_null);
+	return sref->get_orig();
 }
 
 const zo_string& 
 zo_ref::get_next(){
-	ZO_CK(fref != zo_null);
-	return fref->get_next();
+	ZO_CK(sref != zo_null);
+	return sref->get_next();
 }
 
 const zo_string
@@ -183,7 +183,7 @@ get_rel_sample_path(zo_path& sf_pth, zo_path& rf_pth){
 const zo_string
 zo_ref::get_orig_rel(){
 	ZO_CK(owner != zo_null);
-	ZO_CK(fref != zo_null);
+	ZO_CK(sref != zo_null);
 	zo_path sf_pth = owner->get_orig();
 	zo_path rf_pth = get_orig();
 	return get_rel_sample_path(sf_pth, rf_pth);
@@ -192,7 +192,7 @@ zo_ref::get_orig_rel(){
 const zo_string
 zo_ref::get_next_rel(){
 	ZO_CK(owner != zo_null);
-	ZO_CK(fref != zo_null);
+	ZO_CK(sref != zo_null);
 	zo_path sf_pth = owner->get_next();
 	zo_path rf_pth = get_next();
 	return get_rel_sample_path(sf_pth, rf_pth);
@@ -248,7 +248,7 @@ is_text_file(zo_path pth){
 }
 
 void
-zo_sfont::get_samples(zo_dir& dir){
+zo_sfont::get_samples(zo_orga& org){
 	zo_sfont_pt fl = this;
 	std::ifstream istm;
 	zo_path fl_orig = fl->get_orig();
@@ -310,7 +310,7 @@ zo_sfont::get_samples(zo_dir& dir){
 		zo_path fx_ref = fix_ref_path(lref, fl_orig, ec);
 		
 		if(ec){
-			dir.bad_spl->all_bk_ref[fl_orig] = fl;
+			org.bad_spl->all_bk_ref[fl_orig] = fl;
 			continue;
 		}
 		tot_spl_ref++;
@@ -319,13 +319,13 @@ zo_sfont::get_samples(zo_dir& dir){
 		//fprintf(stdout, "pnt:'%s'\n", pnt.c_str());
 		
 		bool is_nw = false;
-		zo_sample_pt spl = dir.get_read_sample(fx_ref, is_nw);
+		zo_sample_pt spl = org.get_read_sample(fx_ref, is_nw);
 		ZO_CK(spl != zo_null);		
 		ZO_CK(spl->get_orig() == fx_ref);
 		
 		spl->all_bk_ref[fl_orig] = fl;
 		
-		zo_sample_pt sspl = dir.get_selected_sample(fx_ref, spl, is_nw, false);
+		zo_sample_pt sspl = org.get_selected_sample(fx_ref, spl, is_nw, org.samples_too);
 		if(sspl == zo_null){
 			continue;
 		}
@@ -360,7 +360,7 @@ has_sfz_ext(const zo_path& pth){
 
 void 
 zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_ref){
-	zo_dir& dir = *this;
+	zo_orga& org = *this;
 	ZO_CK(! only_with_ref || (ft == zo_ftype::soundfont));
 	if(! fs::exists(pth)){
 		return;
@@ -398,15 +398,12 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 	if((ft == zo_ftype::soundfont) && is_sfz){
 		zo_sfont_pt sf = get_read_soundfont(apth, is_nw);
 		sf->can_move = ! only_with_ref;
-		if(! only_with_ref){
-			tot_selected_sfz++;
-		}
 		if(purging){
 			sf->is_txt = is_text_file(apth);
 			normal_sfz = sf->is_txt;
 		}
 		if(is_nw && normal_sfz){
-			sf->get_samples(dir);
+			sf->get_samples(org);
 		}
 		bool has_ref = ! sf->all_ref.empty();
 		if(! only_with_ref || has_ref){
@@ -418,8 +415,6 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 	if((ft == zo_ftype::sample) && ! is_sfz){
 		zo_sample_pt sp = get_read_sample(apth, is_nw);
 		ZO_CK(sp != zo_null);
-		sp->selected = true;
-		tot_selected_spl++;
 		get_selected_sample(apth, sp, is_nw, true);
 		return;
 	}
@@ -427,7 +422,7 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 
 
 void 
-zo_orga::read_dir_files(zo_path pth_dir, const zo_ftype ft, const bool only_with_ref, const bool follw_symlk){
+zo_orga::read_dir_files(zo_path pth_dir, const zo_ftype ft, const bool only_with_ref){
 	auto igt = all_to_ignore.find(pth_dir);
 	if(igt != all_to_ignore.end()){
 		std::cout << "IGNORING " << pth_dir << "\n";
@@ -440,6 +435,10 @@ zo_orga::read_dir_files(zo_path pth_dir, const zo_ftype ft, const bool only_with
 	}
 	
 	if(fs::is_symlink(pth_dir)){
+		if(! follw_symlk){
+			std::cout << "Symlink_ignored " << pth_dir << "\n";
+			return;
+		}
 		pth_dir = fs::read_symlink(pth_dir);
 	}
 	std::cout << "ENTERING_DIR " << pth_dir << "\n";
@@ -448,9 +447,7 @@ zo_orga::read_dir_files(zo_path pth_dir, const zo_ftype ft, const bool only_with
 			zo_path pth = entry.path();
 			auto st = entry.status();
 			if(fs::is_directory(st)){
-				if(follw_symlk || ! fs::is_symlink(pth)){
-					read_dir_files(entry, ft, only_with_ref, follw_symlk);
-				}
+				read_dir_files(entry, ft, only_with_ref);
 			} else if(fs::is_regular_file(st)){
 				read_file(pth, ft, only_with_ref);
 			} 
@@ -479,7 +476,7 @@ zo_orga::read_files(const zo_str_vec& all_pth, const zo_ftype ft){
 			if(! recursive){
 				continue;
 			}
-			read_dir_files(f_pth, ft, false, follw_symlk);
+			read_dir_files(f_pth, ft, false);
 		} else if(fs::is_regular_file(f_pth)){
 			read_file(f_pth, ft, false);
 		} 
@@ -503,15 +500,14 @@ zo_orga::read_selected(){
 		return;
 	}
 	
-	//fprintf(stdout, "basic reading Ok\n");
-	fprintf(stdout, "tot_selected_samples = %ld\n", tot_selected_spl);
-	ZO_CK(tot_selected_spl == (long)all_selected_spl.size());
+	long tot_spl = (long)all_selected_spl.size();
+	fprintf(stdout, "tot_selected_samples = %ld\n", tot_spl);
+	
 	bool is_cp = (oper == zo_action::copy);
-	if(! is_cp && (tot_selected_spl > 0)){
+	if(! is_cp && (tot_spl > 0)){
 		ZO_CK(! base_pth.empty());
-		read_dir_files(base_pth, zo_ftype::soundfont, true, follw_symlk);
+		read_dir_files(base_pth, zo_ftype::soundfont, true);
 	}
-	//fprintf(stdout, "recu reading Ok\n");
 }
 
 int test_fs(int argc, char* argv[]){
@@ -536,7 +532,7 @@ int test_fs(int argc, char* argv[]){
 	}
 	
 	zo_orga org;
-	org.read_dir_files(pth1, zo_ftype::soundfont, false, false);
+	org.read_dir_files(pth1, zo_ftype::soundfont, false);
 	
 	return 0;
 }
@@ -554,9 +550,9 @@ int test_rx(int argc, char* argv[]){
 	auto fpth = zo_path{fs::canonical(f_nam)};
 	//auto dpth = zo_path{fs::canonical(".")};
 	auto fl = make_sfont_pt(fpth);
-	zo_dir dir;
+	zo_orga org;
 	
-	fl->get_samples(dir);
+	fl->get_samples(org);
 	for(zo_ref_pt ii : fl->all_ref){ 
 		zo_path orig = ii->get_orig();
 		//ZO_CK(orig.is_absolute());
@@ -615,7 +611,7 @@ print_help(const zo_str_vec& args){
 		If no --to option is given the --to directory will be the same as the --from directory.
 	-A --samples_too
 		Copy samples too.
-		In a  --copy, if the target is under of the --from directory copy the samples too. By default it will only change the references in
+		In a  --copy, if the --to directory is under of the --from directory copy the samples too. By default it will only change the references in
 		copied sfz soundfonts to the existing samples (to keep reference consistency).
 	-K --keep
 		keep the destination file when it already exists.
@@ -702,10 +698,16 @@ zo_orga::get_args(const zo_str_vec& args){
 	last_pth = "";
 	gave_names = false;
 	
+	bool is_fst = true;
 	auto it = args.begin();
 	for(; it != args.end(); it++){
 		auto ar = *it;
 		fprintf(stdout, ">'%s'\n", ar.c_str());
+		if(is_fst){
+			is_fst = false;
+			continue;
+		}
+		
 		if((ar == "-l") || (ar == "--list")){
 			just_list = true;
 		}
@@ -787,6 +789,7 @@ zo_orga::get_args(const zo_str_vec& args){
 			return false;
 		}
 		else{
+			fprintf(stdout, ":'%s'\n", ar.c_str());
 			last_pth = ar;
 			if(fs::exists(last_pth)){
 				f_names.push_back(last_pth);
@@ -858,8 +861,17 @@ zo_orga::get_args(const zo_str_vec& args){
 		fprintf(stdout, "Dir 'to' is not under dir 'from' CHANGING action to copy\n");
 		oper = zo_action::copy;
 	}
+	if(oper == zo_action::copy){
+		samples_too = samples_too || ! is_under;
+	}
 
 	fprintf(stdout, "Using target %s\n", target.c_str());
+	if(samples_too){
+		fprintf(stdout, "Copying samples_too\n");
+	}
+	if(gave_names){
+		fprintf(stdout, "gave_names\n");
+	}
 	
 	zo_string ac_str = get_action_str(oper);
 	if(just_list){
@@ -919,6 +931,10 @@ print_separator_line(const char* sep){
 
 void
 zo_sfont::print_actions(zo_orga& org){
+	if(is_same()){
+		fprintf(stdout, "UNCHANGED SOUNDFONT '%s' (skipping)\n", get_orig().c_str());
+		return;
+	}
 	bool purging = (org.oper == zo_action::purge);
 	if(! purging || ! fpth.nxt_pth.empty()){
 		print_separator_line("=");
@@ -941,6 +957,10 @@ zo_sfont::print_actions(zo_orga& org){
 
 void
 zo_sample::print_actions(zo_orga& org){
+	if(is_same()){
+		fprintf(stdout, "UNCHANGED SAMPLE '%s' (skipping)\n", get_orig().c_str());
+		return;
+	}
 	bool purging = (org.oper == zo_action::purge);
 	if(! purging || ! fpth.nxt_pth.empty()){
 		print_separator_line("+");
@@ -1067,6 +1087,10 @@ zo_sfont::do_actions(zo_orga& org){
 	if(did_it){ return; }
 	did_it = true;
 	
+	if(is_same()){
+		fprintf(stdout, "UNCHANGED SOUNDFONT '%s' (skipping)\n", get_orig().c_str());
+		return;
+	}
 	zo_path nxt = get_next();
 	if(nxt.empty()){
 		fprintf(stdout, "SKIPPING SOUNDFONT '%s'\n", get_orig().c_str());
@@ -1077,11 +1101,10 @@ zo_sfont::do_actions(zo_orga& org){
 	bool is_mv = org.is_move();
 	zo_path tmp = org.get_temp_path();
 	prepare_tmp_file(tmp);
-	fs::rename(tmp, nxt);
 	if(is_mv){
 		fs::remove(get_orig());
-		return;
 	}
+	fs::rename(tmp, nxt);
 }
 
 void 
@@ -1090,6 +1113,10 @@ zo_sample::do_actions(zo_orga& org){
 	if(did_it){ return; }
 	did_it = true;
 	
+	if(is_same()){
+		fprintf(stdout, "UNCHANGED SAMPLE '%s' (skipping)\n", get_orig().c_str());
+		return;
+	}
 	zo_path nxt = get_next();
 	if(nxt.empty()){
 		fprintf(stdout, "SKIPPING SAMPLE '%s'\n", get_orig().c_str());
@@ -1385,7 +1412,6 @@ zo_fname::calc_next(zo_orga& org, bool can_mv){
 	ZO_CK(! ec);
 	
 	zo_string nm = pth.filename();
-	//long tot_src = tot_cp_or_mv();
 	
 	zo_path dir_to = org.dir_to;
 	if(org.oper == zo_action::copy){
@@ -1447,3 +1473,20 @@ zo_fname::calc_next(zo_orga& org, bool can_mv){
 	nxt_pth = nx_pth;
 }
 
+bool
+zo_sfont::is_same(){
+	bool same_nm = fpth.is_same();
+	bool all_sm = true;
+	for(zo_ref_pt ii : all_ref){ 
+		ZO_CK(ii != zo_null);
+		all_sm = all_sm && ii->is_same();
+	}
+	return (all_sm && same_nm);
+}
+
+bool
+zo_ref::is_same(){
+	bool sm = prefix.empty() && suffix.empty() && bad_pth.empty();
+	ZO_CK(sref != zo_null);
+	return (sm && sref->is_same());
+}

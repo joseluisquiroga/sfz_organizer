@@ -170,6 +170,10 @@ public:
 		nxt_pth = orig_pth;
 	}
 	void calc_next(zo_orga& org, bool can_mv = true);
+	
+	bool is_same(){
+		return (orig_pth == nxt_pth);
+	}
 };
 
 class zo_ref {
@@ -182,7 +186,7 @@ public:
 	zo_sfont_pt		owner = zo_null;
 	long			num_line{ZO_INVALID_LINE_NUM};
 	zo_string 		prefix{""};
-	zo_sample_pt	fref = zo_null;
+	zo_sample_pt	sref = zo_null;
 	zo_string 		suffix{""};
 	zo_string 		bad_pth{""};
 	
@@ -192,13 +196,13 @@ public:
 		
 		owner = fl;
 		num_line = ln_num;
-		fref = rf;
+		sref = rf;
 	}
 	
 	~zo_ref(){
 		num_line = ZO_INVALID_LINE_NUM;
 		owner = zo_null;
-		fref = zo_null;
+		sref = zo_null;
 		//fprintf(stdout, "Calling ~zo_ref\n");
 	}
 	
@@ -206,6 +210,8 @@ public:
 	const zo_string& get_next();
 	const zo_string get_orig_rel();
 	const zo_string get_next_rel();
+	
+	bool is_same();
 	
 	void print_lines(std::ofstream& dst, const zo_string& ln);
 	void print_actions(zo_orga& org);
@@ -246,7 +252,9 @@ public:
 		return fpth.nxt_pth;
 	}
 	
-	void get_samples(zo_dir& dir);
+	bool is_same();
+	
+	void get_samples(zo_orga& org);
 	
 	void print_actions(zo_orga& org);	
 	void do_actions(zo_orga& org);
@@ -271,7 +279,6 @@ class zo_sample {
 	zo_sample& operator = (zo_sample&& rr) = delete;
 	
 public:
-	bool 			selected{false};
 	zo_fname		fpth;
 	bool 			did_it{false};
 	zo_sfont_map	all_bk_ref;
@@ -290,6 +297,10 @@ public:
 	
 	const zo_string& get_next(){
 		return fpth.nxt_pth;
+	}
+
+	bool is_same(){
+		return fpth.is_same();
 	}
 	
 	void print_actions(zo_orga& org);
@@ -358,9 +369,6 @@ public:
 	long 				tot_conflict{0};
 
 	zo_sample_pt 		bad_spl{zo_null};
-	
-	long 				tot_selected_sfz{0};
-	long 				tot_selected_spl{0};
 	
 	zo_dir(){
 		bad_spl = make_sample_pt("");
@@ -443,11 +451,6 @@ public:
 		return sp;
 	}
 	
-	long tot_cp_or_mv(){
-		long tot = tot_selected_sfz + tot_selected_spl;
-		return tot;
-	}
-
 	void print_actions(zo_orga& org);
 	void do_actions(zo_orga& org);
 };
@@ -475,7 +478,7 @@ public:
 	zo_string match_str{"(.*)"};	// match option
 	zo_string subst_str{""}; // substitute option
 	zo_action oper{zo_action::nothing};
-	
+
 	std::regex match_rx;
 	
 	zo_string tmp_nam{".temp_sfz_organizer_file"};
@@ -504,7 +507,7 @@ public:
 	}
 	
 	void read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_ref);
-	void read_dir_files(zo_path pth_dir, const zo_ftype ft, const bool only_with_ref, const bool follw_symlk);
+	void read_dir_files(zo_path pth_dir, const zo_ftype ft, const bool only_with_ref);
 	
 	void read_files(const zo_str_vec& all_pth, const zo_ftype ft);
 	void read_selected();
