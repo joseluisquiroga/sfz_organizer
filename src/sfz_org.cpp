@@ -622,15 +622,20 @@ print_help(const zo_str_vec& args){
 	-P --replace
 		replace the destination file when it already exists.
 	-M --match <regex_to_match>
-		match regex to use in action. All selected files with names (not paths) matching will be used as subject of action.
+		match regex to use in action. All selected filenames (not paths) will be affected by this option.
+		If no --match is given the regex will be '(.*)'
+		Used as the second parameter to std::regex_replace with no flags.
 	-S --substitute <expression_to_substitute>
-		substitute expression used to determine the file name result of action.
+		substitute expression used to determine the result filename of action. All selected filenames (not paths) will be affected by this option.
+		Used as the third parameter to std::regex_replace with no flags.
 	-r --recursive
 		do action for all subdirectories under selected directories.
 	-o --only_sfz
 		Only select files with '.sfz' extension.
-	-F --follow_symlinks
+	-L --follow_symlinks
 		Follow symlinks when reading directories.
+	-F --force_action
+		Execute action solving all conflicts with different names.
 	--skip_normalize
 		Do not normalize names. Not recomended because it deactivates conflict solving.
 	--help 
@@ -695,8 +700,6 @@ zo_orga::get_args(const zo_str_vec& args){
 	ignore_purged_dir();
 	
 	last_pth = "";
-	last_exists = false;
-	last_is_dir = false;
 	gave_names = false;
 	
 	auto it = args.begin();
@@ -766,8 +769,11 @@ zo_orga::get_args(const zo_str_vec& args){
 		else if((ar == "-o") || (ar == "--only_sfz")){
 			only_sfz = true;
 		}
-		else if((ar == "-F") || (ar == "--follow_symlinks")){
+		else if((ar == "-L") || (ar == "--follow_symlinks")){
 			follw_symlk = true;
+		}
+		else if((ar == "-F") || (ar == "--force_action")){
+			force_action = true;
 		}
 		else if(ar == "--skip_normalize"){
 			skip_normalize = true;
@@ -782,9 +788,7 @@ zo_orga::get_args(const zo_str_vec& args){
 		}
 		else{
 			last_pth = ar;
-			last_exists = fs::exists(last_pth);
-			last_is_dir = fs::is_directory(last_pth);
-			if(last_exists){
+			if(fs::exists(last_pth)){
 				f_names.push_back(last_pth);
 			}
 			gave_names = true;
@@ -806,6 +810,22 @@ zo_orga::get_args(const zo_str_vec& args){
 	if(dir_to.empty()){
 		dir_to = dir_from;
 	}
+	
+	if(oper == zo_action::copy){
+		bool ok = calc_target(had_dir_to);
+		if(! ok){
+			fprintf(stdout, "Invalid target\n");
+			return false;
+		}
+	}
+	if(oper == zo_action::move){
+		bool ok = calc_target(had_dir_to);
+		if(! ok){
+			fprintf(stdout, "Invalid target\n");
+			return false;
+		}
+	}
+	
 	if(! fs::exists(dir_from)){
 		fprintf(stderr, "directory %s given in option --from does not exist\n", dir_from.c_str());
 		return false;
@@ -824,6 +844,13 @@ zo_orga::get_args(const zo_str_vec& args){
 	tmp_pth = base_pth / tmp_nam;
 	fs::create_directories(tmp_pth.parent_path());
 	fprintf(stdout, "Using temp file path '%s'\n", tmp_pth.c_str());
+	fprintf(stdout, "Using target name '%s'\n", target.c_str());
+	
+	if(! subst_str.empty()){
+		match_rx = match_str;
+		fprintf(stdout, "Using match_str '%s'\n", match_str.c_str());
+		fprintf(stdout, "Using subst_str '%s'\n", subst_str.c_str());
+	}
 	
 	zo_string dto = dir_to;
 	bool is_under = (dto.rfind(dir_from, 0) == 0);
@@ -832,21 +859,6 @@ zo_orga::get_args(const zo_str_vec& args){
 		oper = zo_action::copy;
 	}
 
-	if(oper == zo_action::copy){
-		bool ok = calc_target(had_dir_to);
-		if(! ok){
-			fprintf(stdout, "Invalid target\n");
-			return false;
-		}
-	}
-	if(oper == zo_action::move){
-		bool ok = calc_target(had_dir_to);
-		if(! ok){
-			fprintf(stdout, "Invalid target\n");
-			return false;
-		}
-	}
-	
 	fprintf(stdout, "Using target %s\n", target.c_str());
 	
 	zo_string ac_str = get_action_str(oper);
@@ -1182,16 +1194,17 @@ zo_ref::print_lines(std::ofstream& dst, const zo_string& ln){
 }
 
 void
-zo_sfont::prepare_add_sfz_ext(){
+zo_sfont::prepare_add_sfz_ext(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	fpth.nxt_pth = fpth.orig_pth + ".sfz";
+	fpth.calc_next(org);
 }
 
 void
 zo_orga::prepare_add_sfz_ext(){
+	zo_orga& org = *this;
 	for(const auto& sfe : all_selected_sfz){
 		zo_sfont_pt sf = sfe.second;
-		sf->prepare_add_sfz_ext();
+		sf->prepare_add_sfz_ext(org);
 	}
 }
 
@@ -1239,37 +1252,56 @@ zo_orga::prepare_purge(){
 
 bool
 zo_orga::calc_target(bool had_dir_to){
+	target = "";
 	if(had_dir_to){
-		target = dir_to;
 		return true;
 	}
 	if(! subst_str.empty()){
-		target = dir_to;
 		return true;
 	}
 	if(f_names.empty()){
-		target = dir_to;
 		return true;
 	}
 	ZO_CK(! f_names.empty());
 
 	if(last_pth.empty()){
-		target = dir_to;
 		return true;
 	}
 	
 	if(! fs::exists(last_pth)){
 		ZO_CK(last_pth != f_names.back());
 		ZO_CK(! fs::is_directory(last_pth));
+
+		zo_path pnt = last_pth.parent_path();
+		if(pnt.empty()){
+			pnt = ".";
+		}
+		if(! fs::is_directory(pnt)){
+			fprintf(stdout, "The target's directory '%s' does NOT exist\n", pnt.c_str());
+			return false;
+		}
 		
-		target = last_pth;
+		ZO_CK(! had_dir_to);
+		dir_to = pnt;
+		
+		zo_path nm = last_pth.filename();
+		target = nm;
 		return true;
 	}
 	
 	ZO_CK(last_pth == f_names.back());
 	
-	target = fs::canonical(last_pth);
+	last_pth = fs::canonical(last_pth);
 	f_names.pop_back();
+	
+	if(! fs::is_directory(last_pth)){
+		fprintf(stdout, "Target '%s' exists and is NOT directory\n", last_pth.c_str());
+		return false;
+	}
+	
+	ZO_CK(! had_dir_to);
+	dir_to = last_pth;
+	
 	return true;
 }
 
@@ -1325,10 +1357,16 @@ zo_orga::organizer_main(const zo_str_vec& args){
 		prepare_copy_or_move();
 	}
 	
+	if((tot_conflict > 0) && ! force_action){
+		just_list = true;
+	}
 	
 	if(just_list){
 		fprintf(stderr, "Just_printing_actions\n");
 		print_actions(org);
+		if(tot_conflict > 0){
+			fprintf(stderr, "Found %ld conflicts. Use --force_action to execute\n", tot_conflict);
+		}
 		fprintf(stderr, "Doing_nothing.\n");
 		return;
 	}
@@ -1347,22 +1385,39 @@ zo_fname::calc_next(zo_orga& org, bool can_mv){
 	ZO_CK(! ec);
 	
 	zo_string nm = pth.filename();
-	if(! org.skip_normalize){
-		normalize_name(nm);
-	}
 	//long tot_src = tot_cp_or_mv();
 	
 	zo_path dir_to = org.dir_to;
 	if(org.oper == zo_action::copy){
+		if(! org.target.empty()){
+			nm = org.target;
+		}
 	}
 	if(org.oper == zo_action::move){
 		if(! can_mv){
 			dir_to = org.dir_from;
 		}
+		if(! org.target.empty() && can_mv){
+			nm = org.target;
+		}
+	}
+	
+	if(! org.skip_normalize){
+		normalize_name(nm);
+	}
+	
+	if(org.oper == zo_action::add_sfz){
+		ZO_CK(! has_sfz_ext(nm));
+		nm = nm + ".sfz";
 	}
 	if(org.oper == zo_action::purge){
 		dir_to = dir_to / "purged";
 	}
+	
+	if(! org.subst_str.empty()){
+		nm = std::regex_replace(nm, org.match_rx, org.subst_str);
+	}
+	
 	zo_path nx_pth = dir_to / rel_dir / nm;
 	
 	zo_last_confl_pt the_cfl = zo_null;

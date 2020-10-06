@@ -253,7 +253,7 @@ public:
 	void prepare_normalize(zo_orga& org);
 	void prepare_tmp_file(const zo_path& tmp_pth);
 	
-	void prepare_add_sfz_ext();
+	void prepare_add_sfz_ext(zo_orga& org);
 	void prepare_purge(zo_orga& org);
 	void prepare_copy_or_move(zo_orga& org);
 	
@@ -466,14 +466,17 @@ public:
 	bool samples_too = false;
 	bool hidden_too = false;
 	bool skip_normalize = false;
+	bool force_action = false;
 	
 	zo_policy pol{zo_policy::keep}; // replace | keep options
 	
 	zo_path  dir_from{""};	// from option
 	zo_path  dir_to{""};	// to option
-	zo_string match_str{""};	// match option
+	zo_string match_str{"(.*)"};	// match option
 	zo_string subst_str{""}; // substitute option
 	zo_action oper{zo_action::nothing};
+	
+	std::regex match_rx;
 	
 	zo_string tmp_nam{".temp_sfz_organizer_file"};
 	zo_path tmp_pth{""};
@@ -481,8 +484,6 @@ public:
 	zo_str_vec f_names;
 	
 	zo_path last_pth{""};
-	bool last_exists{false};
-	bool last_is_dir{false};
 	bool gave_names{false};
 
 	zo_path target{""};
