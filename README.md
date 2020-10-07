@@ -12,6 +12,7 @@ make
 
 # Description
 
+```
 sfz_organizer [OPTION] ... [FILE] ...
 	The purpose of sfz_organizer is to move and copy sfz soundfonts while preserving consistency of any referenced sample within them.
 	Options:
@@ -107,6 +108,7 @@ sfz_organizer [OPTION] ... [FILE] ...
 	8. The default policy is --keep.
 	
 	9. If more than one action (--move, --copy, --purge, --add_sfz_ext, --normalize) is given, only the last one will be executed.
+```
 
 	
 # Status
