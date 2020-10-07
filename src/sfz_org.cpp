@@ -1437,6 +1437,9 @@ zo_fname::calc_next(zo_orga& org, bool cmd_sel, bool can_mv){
 	
 	zo_path dr_to = org.dir_to;
 	if((org.oper == zo_action::copy) || (org.oper == zo_action::move)){
+		if(cmd_sel){
+			rel_dir = "";
+		}
 		if(! can_mv){
 			dr_to = org.dir_from;
 		}
