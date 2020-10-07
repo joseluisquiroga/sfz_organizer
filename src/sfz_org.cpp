@@ -589,7 +589,10 @@ print_help(const zo_str_vec& args){
 	fprintf(stdout, 
 	R"help(%s [OPTION] ... [FILE] ...
 	The purpose of %s is to move and copy sfz soundfonts while preserving consistency of any referenced sample within them.
+	
 	Options:
+	=======
+	
 	-l --list
 		Just print what it would do without actualy doing it.
 	-m --move
@@ -619,7 +622,7 @@ print_help(const zo_str_vec& args){
 	-f --from <source_dir>
 		Source directory. 
 		Consistency of action is only kept up to this directory, meaning:
-			All sfz soundfonts and samples (referenced files by sfz files) subject of action MUST be under this directory.
+			All sfz soundfonts and samples (referenced files by sfz files) subject to change MUST be under this directory.
 		If no --from option is given the --from directory will be the current directory.
 	-t --to <dest_dir>
 		Destination directory. 
@@ -653,6 +656,8 @@ print_help(const zo_str_vec& args){
 	--version 
 	
 	Notes:
+	=====
+	
 	1. All files under --from and --to directories SHOULD be either:
 		- a sfz soundfont. A text file (utf8) with '.sfz' extension.
 		- a sample. A file without '.sfz' extension.
@@ -667,21 +672,54 @@ print_help(const zo_str_vec& args){
 		If just ONE file is selected in the command line the current directory will be the target.
 		If not --to directory, no --substitute option are given and MORE than one file is selected in the command line, the last one will be the target.
 		
-	3. A file is subject of action if it is selected or if it has a reference to a selected file. i.e. a sfz soundfont file that has a reference to a selected sample.
+	3. A file is subject to change if it is selected or if it has a reference to a selected file. i.e. a sfz soundfont file that has a reference to a selected sample.
 	
-	4. If one or more samples are selected then ALL sfz files under --from directory are read (to find posible references to the selected samples).
+	4. All changed references in sfz soundfonts (the 'sample' opcodes) will be canonized:
+		- The line will start by the opcode (the 'sample' opcode).
+		- The line will have ony one opcode (the 'sample' opcode).
+		- The directory separator will be '/'.
 	
-	5. A file (or directory) is selected:
+		Other opcodes that were in the same line will be in separate lines.
+		Only the 'sample' opcodes will be canonized.
+	
+	5. If one or more samples are selected then ALL sfz files under --from directory are read (to find posible references to the selected samples).
+	
+	6. A file (or directory) is selected:
 		If it is listed explicitly in the [FILE] ... portion of the command line or,
 		If the option --recursive is given and it is under one of the selected directories.
 		
-	6. If no files are selected then ALL files in the current directory are selected.
+	7. If no files are selected then ALL files in the current directory are selected.
 	
-	7. By default all sfz soundfont and sample names are normalized during ANY action.
+	8. By default all sfz soundfont and sample names are normalized during ANY action.
 	
-	8. The default policy is --keep.
+	9. The default policy is --keep.
 	
-	9. If more than one action (--move, --copy, --purge, --add_sfz_ext, --normalize) is given, only the last one will be executed.
+	10. If more than one action (--move, --copy, --purge, --add_sfz_ext, --normalize) is given, only the last one will be executed.
+	
+	Examples:
+	=========
+	
+	1. sfz_organizer -N -r -l
+	Just list what it would do to normalize all names recursively in the current directory.
+
+	2. sfz_organizer --purge -r -l
+	Just list what it would do to purge all names recursively in the current directory.
+	
+	3. sfz_organizer -c aa.sfz sub_dir/bb.sfz
+	Copy 'aa.sfz' into 'sub_dir' with name 'bb.sfz' and reusing samples under the current directory. 'sub_dir' must already exist.
+	
+	4. sfz_organizer -m samples/stick* samp2/
+	Move all samples that start with 'stick' in directory 'samples' to directory 'samp2'. 'samp2' must already exist.
+	
+	5. sfz_organizer -c gong.sfz copies/gong.sfz -A
+	Copy 'gong.sfz' into 'copies' with name 'gong.sfz' and copy all samples used by 'gong.sfz' to an equivalent directory tree under 'copies'.
+	
+	6. sfz_organizer -c -M "SJO_" -S "LOL_" *.sfz lol/
+	Copy all files ending in '.sfz' in the current directory into directory 'lol' and change any filename that has string 'SJO_' for string 'LOL_'.
+		
+	6. sfz_organizer --move String*.sfz ../separate
+	Changes to a copy. Copy all files with form 'String*.sfz' in the current directory into directory '../separate'. It also copies all samples 
+	used by them keeping an equivalent tree structure. 
 		
 	)help", prg_nm.c_str(), prg_nm.c_str());
 	fprintf(stdout, "\n");
@@ -1301,11 +1339,14 @@ zo_orga::prepare_purge(){
 
 bool
 zo_orga::calc_target(bool had_dir_to){
+	bool lst_is_dir = fs::is_directory(last_pth);
+	bool lst_exists = fs::exists(last_pth);
 	target = "";
 	if(had_dir_to){
 		return true;
 	}
-	if(! subst_str.empty()){
+	bool lst_is_good_dir = (lst_exists && lst_is_dir && ! recursive);
+	if(! subst_str.empty() && ! lst_is_good_dir){
 		return true;
 	}
 	if(f_names.empty()){
@@ -1317,9 +1358,9 @@ zo_orga::calc_target(bool had_dir_to){
 		return true;
 	}
 	
-	if(! fs::exists(last_pth)){
+	if(! lst_exists){
 		ZO_CK(last_pth != f_names.back());
-		ZO_CK(! fs::is_directory(last_pth));
+		ZO_CK(! lst_is_dir);
 
 		zo_path pnt = last_pth.parent_path();
 		if(pnt.empty()){
@@ -1343,7 +1384,7 @@ zo_orga::calc_target(bool had_dir_to){
 	last_pth = fs::canonical(last_pth);
 	f_names.pop_back();
 	
-	if(! fs::is_directory(last_pth)){
+	if(! lst_is_dir){
 		fprintf(stdout, "Target '%s' exists and is NOT directory\n", last_pth.c_str());
 		return false;
 	}
