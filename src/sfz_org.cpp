@@ -94,6 +94,7 @@ unsigned char ZO_BUFFER[ZO_BUFFER_SZ];
 std::regex ZO_SAMPLE_LINE_PATTERN{ZO_SAMPLE_LINE_PATTERN_STR.c_str()};
 std::regex ZO_OPCODE_PATTERN{ZO_OPCODE_PATTERN_STR.c_str()};
 
+// find_relative() implementation
 zo_path 
 relative(const zo_path& pth, const zo_path& base, std::error_code& ec){
 	if(! pth.is_absolute()){
@@ -132,7 +133,8 @@ relative(const zo_path& pth, const zo_path& base, std::error_code& ec){
 		return pth;
 	}
 	
-	//fprintf(stdout, "base:%s\n", base.c_str());
+	//fprintf(stdout, "pth:%s\n", pth.c_str()); // dbg_prt
+	//fprintf(stdout, "base:%s\n", base.c_str()); // dbg_prt
 
 	zo_path result;
 
@@ -153,6 +155,7 @@ relative(const zo_path& pth, const zo_path& base, std::error_code& ec){
 		++itr_path;
 	}
 
+	//fprintf(stdout, "result:%s\n", result.c_str()); // dbg_prt
 	return result;
 }
 
@@ -170,6 +173,9 @@ zo_ref::get_next(){
 
 const zo_string
 get_rel_sample_path(zo_path& sf_pth, zo_path& rf_pth){
+	//fprintf(stdout, "sf_pth:%s\n", sf_pth.c_str()); // dbg_prt
+	//fprintf(stdout, "rf_pth:%s\n", rf_pth.c_str()); // dbg_prt
+	
 	zo_path sf_pnt = sf_pth.parent_path();
 	zo_path rf_pnt = rf_pth.parent_path();
 	
@@ -194,7 +200,13 @@ zo_ref::get_next_rel(){
 	ZO_CK(owner != zo_null);
 	ZO_CK(sref != zo_null);
 	zo_path sf_pth = owner->get_next();
+	if(sf_pth.empty()){
+		sf_pth = owner->get_orig();
+	}
 	zo_path rf_pth = get_next();
+	if(rf_pth.empty()){
+		rf_pth = get_orig();
+	}
 	return get_rel_sample_path(sf_pth, rf_pth);
 }
 
@@ -273,7 +285,7 @@ zo_sfont::get_samples(zo_orga& org){
 		if(! regex_search(ln, sample_matches, ZO_SAMPLE_LINE_PATTERN)){
 			continue;
 		}
-		//fprintf(stdout, "> %ld:%s\n", lnum, ln.c_str());
+		//fprintf(stdout, "> %ld:%s\n", lnum, ln.c_str()); // dbg_prt
 		zo_string lprefix = "";
 		zo_string lref = "";
 		zo_string lsuffix = "";
@@ -285,60 +297,57 @@ zo_sfont::get_samples(zo_orga& org){
 			if(found_sample_opcode && nxt_pfx.empty()){
 				ZO_CK(opcode_matches.size() > 0);
 				nxt_pfx = opcode_matches.prefix().str();
-				//fprintf(stdout, "pfx:%s\n", nxt_pfx.c_str());
+				//fprintf(stdout, "pfx:%s\n", nxt_pfx.c_str()); // dbg_prt
 				zo_string m0 = opcode_matches[0];
 				lsuffix = m0 + opcode_matches.suffix().str();
 				break;
 			}
 			for(long aa = 0; aa < (long)opcode_matches.size(); aa++){
 				zo_string m0 = opcode_matches[aa];
-				//fprintf(stdout, "+%ld:%s\n", aa, m0.c_str());
+				//fprintf(stdout, "+%ld:%s\n", aa, m0.c_str()); // dbg_prt
 				if(m0 == ZO_SAMPLE_STR){
 					found_sample_opcode = true;
 					lprefix = opcode_matches.prefix().str();
 				}
 			}
 			opcod = opcode_matches.suffix().str();
-			//fprintf(stdout, "sfx:%s\n", opcod.c_str());
+			//fprintf(stdout, "sfx:%s\n", opcod.c_str()); // dbg_prt
 		}
 
 		lref = (! nxt_pfx.empty())?(nxt_pfx):(opcod);
 		trim(lref);
-		//fprintf(stdout, "sample_f_nam:'%s'\n", lref.c_str());
+		//fprintf(stdout, "lref:'%s'\n", lref.c_str()); // dbg_prt
 		
 		auto ec = std::error_code{};
 		zo_path fx_ref = fix_ref_path(lref, fl_orig, ec);
-		
-		if(ec){
-			org.bad_spl->all_bk_ref[fl_orig] = fl;
-			continue;
-		}
-		tot_spl_ref++;
-		
-		//fprintf(stdout, "rpth:'%s'\n", rpth.c_str());
-		//fprintf(stdout, "pnt:'%s'\n", pnt.c_str());
+
+		//fprintf(stdout, "lprefix:'%s'\n", lprefix.c_str()); // dbg_prt
+		//fprintf(stdout, "fx_ref:'%s'\n", fx_ref.c_str()); // dbg_prt
+		//fprintf(stdout, "lsuffix:'%s'\n", lsuffix.c_str()); // dbg_prt
 		
 		bool is_nw = false;
-		zo_sample_pt spl = org.get_read_sample(fx_ref, is_nw);
-		ZO_CK(spl != zo_null);		
-		ZO_CK(spl->get_orig() == fx_ref);
+		zo_sample_pt spl = zo_null;
+		if(ec){
+			spl = org.bad_spl;
+		} else {
+			spl = org.get_read_sample(fx_ref, is_nw);
+			ZO_CK(spl->get_orig() == fx_ref);
+			org.get_selected_sample(fx_ref, spl, is_nw, org.samples_too);
+		}
+		ZO_CK(spl != zo_null);
+		tot_spl_ref++;
 		
 		spl->all_bk_ref[fl_orig] = fl;
 		
-		zo_sample_pt sspl = org.get_selected_sample(fx_ref, spl, is_nw, org.samples_too);
-		if(sspl == zo_null){
-			continue;
-		}
-		ZO_CK(sspl == spl);
-
 		auto nw_ref = make_ref_pt(fl, lnum, spl);
-		nw_ref->prefix = lprefix;
-		nw_ref->suffix = lsuffix;
 		fl->all_ref.push_back(nw_ref);
 		
 		if(ec){
 			nw_ref->bad_pth = lref;
 			fprintf(stderr, "bad_ref:'%s' in file %s\n", lref.c_str(), fl_orig.c_str());
+		} else {
+			nw_ref->prefix = lprefix;
+			nw_ref->suffix = lsuffix;
 		}
 	}
 	
@@ -407,7 +416,7 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 		}
 		bool has_ref = ! sf->all_ref.empty();
 		if(! only_with_ref || has_ref){
-			ZO_CK(oper != zo_action::copy);
+			ZO_CK(! ((oper == zo_action::copy) && only_with_ref));
 			get_selected_soundfont(apth, sf, is_nw);
 		}
 		return;
@@ -907,8 +916,8 @@ zo_ref::print_actions(zo_orga& org){
 	}
 	fprintf(stdout, "original_sample: %s\n", get_orig().c_str());
 	fprintf(stdout, "original_rel_sample: %s\n", get_orig_rel().c_str());
-	if(get_next().empty()){
-		fprintf(stdout, "KEEPING_ORIG_LINE %ld\n", num_line);
+	if(is_same()){
+		fprintf(stdout, "KEEPING_ORIG_LINE %ld. zo_ref::is_same()\n", num_line);
 		return;
 	}
 	fprintf(stdout, "replace_line %ld with:\n", num_line);
@@ -1147,6 +1156,7 @@ zo_dir::do_actions(zo_orga& org){
 void
 zo_sfont::prepare_tmp_file(const zo_path& tmp_pth){
 	if(all_ref.empty()){
+		fprintf(stdout, "JUST_COPY_FILE. all_ref.empty(). %s\n", get_orig().c_str()); // dbg_prt
 		fs::copy(get_orig(), tmp_pth);
 		return;
 	}
@@ -1195,27 +1205,33 @@ zo_sfont::prepare_tmp_file(const zo_path& tmp_pth){
 		}
 			
 		it++;
-		rf->print_lines(dst, ln);
+		rf->write_ref(dst, ln);
 	}
 	
 	//return 0;
 }
 
 void 
-zo_ref::print_lines(std::ofstream& dst, const zo_string& ln){
+zo_ref::write_ref(std::ofstream& dst, const zo_string& ln){
 	if(! bad_pth.empty()){
+		//fprintf(stdout, "KEEP_LINE.! bad_pth.empty()_during %s\n", ln.c_str()); // dbg_prt
 		dst << ln << '\n';
 		return;
 	}
-	if(get_next().empty()){
+	if(is_same()){
+		fprintf(stdout, "KEEP_LINE. zo_ref::is_same()_during %s\n", ln.c_str()); // dbg_prt
 		dst << ln << '\n';
 		return;
 	} 
 	if(! prefix.empty()){
+		//fprintf(stdout, "WRITING_PREFIX. %s\n", prefix.c_str()); // dbg_prt
 		dst << prefix << '\n';
 	}
-	dst << "sample=" << get_next_rel() << '\n';
+	zo_string nx_rel = get_next_rel();
+	//fprintf(stdout, "WRITING_SAMPLE. %s\n", nx_rel.c_str()); // dbg_prt
+	dst << "sample=" << nx_rel << '\n';
 	if(! suffix.empty()){
+		//fprintf(stdout, "WRITING_SUFIX. %s\n", suffix.c_str()); // dbg_prt
 		dst << suffix << '\n';
 	}
 }
@@ -1413,21 +1429,15 @@ zo_fname::calc_next(zo_orga& org, bool can_mv){
 	
 	zo_string nm = pth.filename();
 	
-	zo_path dir_to = org.dir_to;
-	if(org.oper == zo_action::copy){
-		if(! org.target.empty()){
-			nm = org.target;
-		}
-	}
-	if(org.oper == zo_action::move){
+	zo_path dr_to = org.dir_to;
+	if((org.oper == zo_action::copy) || (org.oper == zo_action::move)){
 		if(! can_mv){
-			dir_to = org.dir_from;
+			dr_to = org.dir_from;
 		}
 		if(! org.target.empty() && can_mv){
 			nm = org.target;
 		}
 	}
-	
 	if(! org.skip_normalize){
 		normalize_name(nm);
 	}
@@ -1437,14 +1447,14 @@ zo_fname::calc_next(zo_orga& org, bool can_mv){
 		nm = nm + ".sfz";
 	}
 	if(org.oper == zo_action::purge){
-		dir_to = dir_to / "purged";
+		dr_to = dr_to / "purged";
 	}
 	
-	if(! org.subst_str.empty()){
+	if(! org.subst_str.empty() && can_mv){
 		nm = std::regex_replace(nm, org.match_rx, org.subst_str);
 	}
 	
-	zo_path nx_pth = dir_to / rel_dir / nm;
+	zo_path nx_pth = dr_to / rel_dir / nm;
 	
 	zo_last_confl_pt the_cfl = zo_null;
 	auto it = org.all_unique_nxt.find(nx_pth);
@@ -1459,7 +1469,7 @@ zo_fname::calc_next(zo_orga& org, bool can_mv){
 		the_cfl->val++;
 		set_num_name(nm, the_cfl->val);
 		
-		nx_pth = dir_to / rel_dir / nm;
+		nx_pth = dr_to / rel_dir / nm;
 		
 		it = org.all_unique_nxt.find(nx_pth);
 	}
@@ -1471,6 +1481,7 @@ zo_fname::calc_next(zo_orga& org, bool can_mv){
 	}
 	org.all_unique_nxt[nx_pth] = the_cfl;
 	nxt_pth = nx_pth;
+	//fprintf(stdout, "calc_next. %s->%s\n", orig_pth.c_str(), nxt_pth.c_str()); // dbg_prt
 }
 
 bool
@@ -1484,9 +1495,15 @@ zo_sfont::is_same(){
 	return (all_sm && same_nm);
 }
 
+zo_fname& 
+zo_ref::sf_name(){
+	ZO_CK(owner != zo_null);
+	return owner->fpth;
+}
+
 bool
 zo_ref::is_same(){
 	bool sm = prefix.empty() && suffix.empty() && bad_pth.empty();
 	ZO_CK(sref != zo_null);
-	return (sm && sref->is_same());
+	return (sm && sref->is_same() && sf_name().is_same());
 }

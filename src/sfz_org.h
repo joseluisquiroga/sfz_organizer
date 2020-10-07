@@ -172,7 +172,7 @@ public:
 	void calc_next(zo_orga& org, bool can_mv = true);
 	
 	bool is_same(){
-		return (orig_pth == nxt_pth);
+		return (nxt_pth.empty() || (orig_pth == nxt_pth));
 	}
 };
 
@@ -206,6 +206,8 @@ public:
 		//fprintf(stdout, "Calling ~zo_ref\n");
 	}
 	
+	zo_fname& sf_name();
+	
 	const zo_string& get_orig();
 	const zo_string& get_next();
 	const zo_string get_orig_rel();
@@ -213,7 +215,7 @@ public:
 	
 	bool is_same();
 	
-	void print_lines(std::ofstream& dst, const zo_string& ln);
+	void write_ref(std::ofstream& dst, const zo_string& ln);
 	void print_actions(zo_orga& org);
 };
 
