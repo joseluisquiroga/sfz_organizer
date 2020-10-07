@@ -94,39 +94,40 @@ unsigned char ZO_BUFFER[ZO_BUFFER_SZ];
 std::regex ZO_SAMPLE_LINE_PATTERN{ZO_SAMPLE_LINE_PATTERN_STR.c_str()};
 std::regex ZO_OPCODE_PATTERN{ZO_OPCODE_PATTERN_STR.c_str()};
 
-// find_relative() implementation
 zo_path 
-relative(const zo_path& pth, const zo_path& base, std::error_code& ec){
-	if(! pth.is_absolute()){
-		fprintf(stdout, "sfz_pth_not_absolute:'%s'\n", pth.c_str());
-		ec = make_zo_err(sfz_pth_not_absolute);
-		return "";
-	}
-	if(! fs::exists(pth)){
-		fprintf(stdout, "sfz_pth_not_exists:'%s'\n", pth.c_str());
-		ec = make_zo_err(sfz_pth_not_exists);
-		return "";
-	}
-	if(! fs::is_directory(pth)){
-		fprintf(stdout, "sfz_pth_not_directory:'%s'\n", pth.c_str());
-		ec = make_zo_err(sfz_pth_not_directory);
-		return "";
-	}
+find_relative(const zo_path& pth, const zo_path& base, std::error_code& ec, bool do_checks = true){
+	if(do_checks){
+		if(! pth.is_absolute()){
+			fprintf(stdout, "sfz_pth_not_absolute:'%s'\n", pth.c_str());
+			ec = make_zo_err(sfz_pth_not_absolute);
+			return "";
+		}
+		if(! fs::exists(pth)){
+			fprintf(stdout, "sfz_pth_not_exists:'%s'\n", pth.c_str());
+			ec = make_zo_err(sfz_pth_not_exists);
+			return "";
+		}
+		if(! fs::is_directory(pth)){
+			fprintf(stdout, "sfz_pth_not_directory:'%s'\n", pth.c_str());
+			ec = make_zo_err(sfz_pth_not_directory);
+			return "";
+		}
 
-	if(! base.is_absolute()){
-		fprintf(stdout, "sfz_base_not_absolute:'%s'\n", base.c_str());
-		ec = make_zo_err(sfz_base_not_absolute);
-		return "";
-	}
-	if(! fs::exists(base)){
-		fprintf(stdout, "sfz_base_not_exists:'%s'\n", base.c_str());
-		ec = make_zo_err(sfz_base_not_exists);
-		return "";
-	}
-	if(! fs::is_directory(base)){
-		fprintf(stdout, "sfz_base_not_directory:'%s'\n", base.c_str());
-		ec = make_zo_err(sfz_base_not_directory);
-		return "";
+		if(! base.is_absolute()){
+			fprintf(stdout, "sfz_base_not_absolute:'%s'\n", base.c_str());
+			ec = make_zo_err(sfz_base_not_absolute);
+			return "";
+		}
+		if(! fs::exists(base)){
+			fprintf(stdout, "sfz_base_not_exists:'%s'\n", base.c_str());
+			ec = make_zo_err(sfz_base_not_exists);
+			return "";
+		}
+		if(! fs::is_directory(base)){
+			fprintf(stdout, "sfz_base_not_directory:'%s'\n", base.c_str());
+			ec = make_zo_err(sfz_base_not_directory);
+			return "";
+		}
 	}
 
 	if(pth.root_path() != base.root_path()){
@@ -172,17 +173,15 @@ zo_ref::get_next(){
 }
 
 const zo_string
-get_rel_sample_path(zo_path& sf_pth, zo_path& rf_pth){
+get_rel_sample_path(zo_path& sf_pth, zo_path& rf_pth, std::error_code& ec, bool do_checks){
 	//fprintf(stdout, "sf_pth:%s\n", sf_pth.c_str()); // dbg_prt
 	//fprintf(stdout, "rf_pth:%s\n", rf_pth.c_str()); // dbg_prt
 	
 	zo_path sf_pnt = sf_pth.parent_path();
 	zo_path rf_pnt = rf_pth.parent_path();
 	
-	std::error_code ec;
-	zo_path rel_dir = find_relative(rf_pnt, sf_pnt, ec);
+	zo_path rel_dir = find_relative(rf_pnt, sf_pnt, ec, do_checks);
 	zo_path rel_pth = rel_dir / rf_pth.filename();
-	ZO_CK(! ec);
 	return rel_pth;
 }
 
@@ -192,7 +191,11 @@ zo_ref::get_orig_rel(){
 	ZO_CK(sref != zo_null);
 	zo_path sf_pth = owner->get_orig();
 	zo_path rf_pth = get_orig();
-	return get_rel_sample_path(sf_pth, rf_pth);
+	
+	std::error_code ec;
+	zo_string rpth = get_rel_sample_path(sf_pth, rf_pth, ec, true);
+	ZO_CK(! ec);
+	return rpth;
 }
 
 const zo_string
@@ -207,7 +210,8 @@ zo_ref::get_next_rel(){
 	if(rf_pth.empty()){
 		rf_pth = get_orig();
 	}
-	return get_rel_sample_path(sf_pth, rf_pth);
+	std::error_code ec;
+	return get_rel_sample_path(sf_pth, rf_pth, ec, false);
 }
 
 
@@ -407,6 +411,7 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 	if((ft == zo_ftype::soundfont) && is_sfz){
 		zo_sfont_pt sf = get_read_soundfont(apth, is_nw);
 		sf->can_move = ! only_with_ref;
+		sf->cmd_sel = ! only_with_ref;
 		if(purging){
 			sf->is_txt = is_text_file(apth);
 			normal_sfz = sf->is_txt;
@@ -423,6 +428,7 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 	}
 	if((ft == zo_ftype::sample) && ! is_sfz){
 		zo_sample_pt sp = get_read_sample(apth, is_nw);
+		sp->cmd_sel = true;
 		ZO_CK(sp != zo_null);
 		get_selected_sample(apth, sp, is_nw, true);
 		return;
@@ -1027,13 +1033,13 @@ zo_dir::print_actions(zo_orga& org){
 void
 zo_sfont::prepare_normalize(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	fpth.calc_next(org);
+	fpth.calc_next(org, cmd_sel);
 }
 
 void
 zo_sample::prepare_normalize(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	fpth.calc_next(org);
+	fpth.calc_next(org, cmd_sel);
 }
 
 void
@@ -1067,7 +1073,7 @@ test_fix(int argc, char* argv[]){
 			zo_fname fpth;
 			fpth.orig_pth = args[1];
 			ZO_CK(fpth.nxt_pth.empty());
-			fpth.calc_next(dd);
+			fpth.calc_next(dd, false);
 			fprintf(stdout, "nxt=%s\n", fpth.nxt_pth.c_str());
 		}
 	}
@@ -1076,7 +1082,7 @@ test_fix(int argc, char* argv[]){
 	zo_fname fpth2;
 	ZO_CK(fpth2.nxt_pth.empty());
 	fpth2.orig_pth = args[1];
-	fpth2.calc_next(dd);
+	fpth2.calc_next(dd, false);
 	fprintf(stdout, "fixed=%s\n", fpth2.nxt_pth.c_str());
 
 	return 0;
@@ -1239,7 +1245,7 @@ zo_ref::write_ref(std::ofstream& dst, const zo_string& ln){
 void
 zo_sfont::prepare_add_sfz_ext(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	fpth.calc_next(org);
+	fpth.calc_next(org, cmd_sel);
 }
 
 void
@@ -1266,7 +1272,7 @@ void
 zo_sfont::prepare_purge(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
 	if(! is_txt || (tot_spl_ref == 0)){
-		fpth.calc_next(org);
+		fpth.calc_next(org, cmd_sel);
 		return;
 	}
 }
@@ -1275,7 +1281,7 @@ void
 zo_sample::prepare_purge(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
 	if(all_bk_ref.empty()){
-		fpth.calc_next(org);
+		fpth.calc_next(org, cmd_sel);
 		return;
 	}
 }
@@ -1351,13 +1357,13 @@ zo_orga::calc_target(bool had_dir_to){
 void
 zo_sfont::prepare_copy_or_move(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	fpth.calc_next(org, can_move);
+	fpth.calc_next(org, cmd_sel, can_move);
 }
 
 void
 zo_sample::prepare_copy_or_move(zo_orga& org){
 	ZO_CK(fpth.nxt_pth.empty());
-	fpth.calc_next(org);
+	fpth.calc_next(org, cmd_sel);
 }
 
 void
@@ -1419,7 +1425,7 @@ zo_orga::organizer_main(const zo_str_vec& args){
 }
 
 void
-zo_fname::calc_next(zo_orga& org, bool can_mv){
+zo_fname::calc_next(zo_orga& org, bool cmd_sel, bool can_mv){
 	ZO_CK(nxt_pth.empty());
 	std::error_code ec;
 	zo_path pth = orig_pth;
@@ -1434,7 +1440,7 @@ zo_fname::calc_next(zo_orga& org, bool can_mv){
 		if(! can_mv){
 			dr_to = org.dir_from;
 		}
-		if(! org.target.empty() && can_mv){
+		if(! org.target.empty() && can_mv && cmd_sel){
 			nm = org.target;
 		}
 	}

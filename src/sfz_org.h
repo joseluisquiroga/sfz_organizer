@@ -42,11 +42,9 @@ sfz_org.h
 #ifdef HAS_FILESYSTEM
 #include <filesystem>
 namespace fs = std::filesystem;
-#define find_relative fs::relative
 #else
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
-#define find_relative relative
 #endif
 
 #include <vector>
@@ -169,7 +167,7 @@ public:
 	void keep_same(){
 		nxt_pth = orig_pth;
 	}
-	void calc_next(zo_orga& org, bool can_mv = true);
+	void calc_next(zo_orga& org, bool cmd_sel, bool can_mv = true);
 	
 	bool is_same(){
 		return (nxt_pth.empty() || (orig_pth == nxt_pth));
@@ -236,6 +234,7 @@ public:
 	long 		tot_spl_ref{0};
 
 	bool 		can_move{false};
+	bool 		cmd_sel{false};
 	
 	zo_sfont(const zo_path& fl){
 		ZO_CK(fl.is_absolute());
@@ -284,6 +283,8 @@ public:
 	zo_fname		fpth;
 	bool 			did_it{false};
 	zo_sfont_map	all_bk_ref;
+
+	bool 		cmd_sel{false};
 	
 	zo_sample(zo_path fl){
 		fpth.orig_pth = zo_path{fl};
