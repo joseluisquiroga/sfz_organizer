@@ -162,8 +162,9 @@ class zo_fname {
 public:
 	zo_string 	orig_pth{""};
 	zo_string 	nxt_pth{""};
+	bool 		is_confl{false};
 
-	void print_actions(zo_orga& org);
+	void print_actions(zo_orga& org, bool only_orig);
 	void keep_same(){
 		nxt_pth = orig_pth;
 	}

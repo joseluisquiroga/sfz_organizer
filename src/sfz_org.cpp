@@ -962,7 +962,7 @@ zo_orga::get_args(const zo_str_vec& args){
 }
 
 void
-zo_fname::print_actions(zo_orga& org){
+zo_fname::print_actions(zo_orga& org, bool only_orig){
 	bool purging = (org.oper == zo_action::purge);
 	if(nxt_pth.empty()){
 		if(! purging){
@@ -971,8 +971,13 @@ zo_fname::print_actions(zo_orga& org){
 		return;
 	}
 	bool is_mv = org.is_move();
-	zo_string act = (is_mv)?("move"):("copy");
-	fprintf(stdout, "'%s' %s to: \n\t '%s'\n", orig_pth.c_str(), act.c_str(), nxt_pth.c_str());
+	zo_string act = (is_mv)?("MOVE_FILE"):("COPY_FILE");
+	zo_string cfl = (is_confl)?(" THAT_WAS_IN_CONFLICT"):("");
+	if(only_orig){
+		fprintf(stdout, "'%s'\n", orig_pth.c_str());
+	} else {
+		fprintf(stdout, "%s%s '%s' to '%s'\n", act.c_str(), cfl.c_str(), orig_pth.c_str(), nxt_pth.c_str());
+	}
 }
 
 void
@@ -1017,7 +1022,7 @@ zo_sfont::print_actions(zo_orga& org){
 	if(! purging || ! fpth.nxt_pth.empty()){
 		print_separator_line("=");
 	}
-	fpth.print_actions(org);
+	fpth.print_actions(org, false);
 	
 	if(purging){
 		if(! is_txt){
@@ -1043,7 +1048,7 @@ zo_sample::print_actions(zo_orga& org){
 	if(! purging || ! fpth.nxt_pth.empty()){
 		print_separator_line("+");
 	}
-	fpth.print_actions(org);
+	fpth.print_actions(org, false);
 	
 	if(purging){
 		if(all_bk_ref.empty()){
@@ -1054,7 +1059,7 @@ zo_sample::print_actions(zo_orga& org){
 	for(const auto& sfe : all_bk_ref){
 		zo_sfont_pt sf = sfe.second;
 		fprintf(stdout, "FOUND IN----------\n");
-		sf->fpth.print_actions(org);
+		sf->fpth.print_actions(org, true);
 	}
 	
 }
@@ -1088,7 +1093,7 @@ zo_dir::print_actions(zo_orga& org){
 		for(const auto& sfe : bad_spl->all_bk_ref){
 			zo_sfont_pt sf = sfe.second;
 			fprintf(stdout, "FOUND_BAD_REFERENCES_IN:\n");  
-			sf->fpth.print_actions(org);
+			sf->fpth.print_actions(org, true);
 		}
 	}
 }
@@ -1535,6 +1540,7 @@ zo_fname::calc_next(zo_orga& org, bool cmd_sel, bool can_mv){
 	auto it = org.all_unique_nxt.find(nx_pth);
 	if(it != org.all_unique_nxt.end()){
 		org.tot_conflict++;
+		is_confl = true;
 		if(org.skip_normalize){
 			return;
 		}
