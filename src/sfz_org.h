@@ -478,10 +478,12 @@ public:
 	
 	zo_path  dir_from{""};	// from option
 	zo_path  dir_to{""};	// to option
+	zo_string regex_str{""};	// regex option
 	zo_string match_str{"(.*)"};	// match option
 	zo_string subst_str{""}; // substitute option
 	zo_action oper{zo_action::nothing};
 
+	std::regex select_rx;
 	std::regex match_rx;
 	
 	zo_string tmp_nam{".temp_sfz_organizer_file"};

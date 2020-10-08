@@ -393,6 +393,15 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 		std::cout << "Hidden_file_ignored " << apth << "\n";
 		return;
 	}
+
+	if(! regex_str.empty()){
+		zo_string nm = apth.filename();
+		std::smatch fname_matches;
+		if(! regex_search(nm, fname_matches, select_rx)){
+			std::cout << "File_not_matching_regex_ignored " << apth << "\n";
+			return;
+		}
+	}
 	
 	bool adding_ext = (oper == zo_action::add_sfz);
 	if(adding_ext){
@@ -635,17 +644,24 @@ print_help(const zo_str_vec& args){
 		keep the destination file when it already exists.
 	-P --replace
 		replace the destination file when it already exists.
+	-E --regex <regex_to_match>
+		match regex to select files. 
+		All selected filenames (not paths) are filtered by this option. Only filenames matching this option will be selected.
+		Used as the third parameter to standard function 'std::regex_search' with default flags.
 	-M --match <regex_to_match>
-		match regex to use in action. All selected filenames (not paths) will be affected by this option.
+		match regex used for substitution in selected filenames. All selected filenames (not paths) will be affected by this option.
 		If no --match is given the regex will be '(.*)'
-		Used as the second parameter to std::regex_replace with no flags.
+		If no --substitute is given this options is ignored.
+		Used as the second parameter to standard function 'std::regex_replace' with default flags.
 	-S --substitute <expression_to_substitute>
 		substitute expression used to determine the result filename of action. All selected filenames (not paths) will be affected by this option.
-		Used as the third parameter to std::regex_replace with no flags.
+		Used as the third parameter to standard function 'std::regex_replace' with default flags.
 	-r --recursive
-		do action for all subdirectories under selected directories.
+		Select files in all subdirectories under selected directories.
+		By default all files are selected including samples. 
+		Use --only_sfz and --regex to further filter selected files.
 	-o --only_sfz
-		Only select files with '.sfz' extension.
+		Only select files with '.sfz' extension. 
 	-L --follow_symlinks
 		Follow symlinks when reading directories.
 	-F --force_action
@@ -717,7 +733,7 @@ print_help(const zo_str_vec& args){
 	6. sfz_organizer -c -M "SJO_" -S "LOL_" *.sfz lol/
 	Copy all files ending in '.sfz' in the current directory into directory 'lol' and change any filename that has string 'SJO_' for string 'LOL_'.
 		
-	6. sfz_organizer --move String*.sfz ../separate
+	7. sfz_organizer --move String*.sfz ../separate
 	Changes to a copy. Copy all files with form 'String*.sfz' in the current directory into directory '../separate'. It also copies all samples 
 	used by them keeping an equivalent tree structure. 
 		
@@ -810,6 +826,10 @@ zo_orga::get_args(const zo_str_vec& args){
 		else if((ar == "-P") || (ar == "--replace")){
 			pol = zo_policy::replace;
 		}
+		else if((ar == "-E") || (ar == "--regex")){
+			it++; if(it == args.end()){ break; }
+			regex_str = *it;
+		}
 		else if((ar == "-M") || (ar == "--match")){
 			it++; if(it == args.end()){ break; }
 			match_str = *it;
@@ -901,6 +921,11 @@ zo_orga::get_args(const zo_str_vec& args){
 	fs::create_directories(tmp_pth.parent_path());
 	fprintf(stdout, "Using temp file path '%s'\n", tmp_pth.c_str());
 	fprintf(stdout, "Using target name '%s'\n", target.c_str());
+	
+	if(! regex_str.empty()){
+		select_rx = regex_str;
+		fprintf(stdout, "Using regex_str '%s'\n", regex_str.c_str());
+	}
 	
 	if(! subst_str.empty()){
 		match_rx = match_str;

@@ -62,17 +62,24 @@ sfz_organizer [OPTION] ... [FILE] ...
 		keep the destination file when it already exists.
 	-P --replace
 		replace the destination file when it already exists.
+	-E --regex <regex_to_match>
+		match regex to select files. 
+		All selected filenames (not paths) are filtered by this option. Only filenames matching this option will be selected.
+		Used as the third parameter to standard function 'std::regex_search' with default flags.
 	-M --match <regex_to_match>
-		match regex to use in action. All selected filenames (not paths) will be affected by this option.
+		match regex used for substitution in selected filenames. All selected filenames (not paths) will be affected by this option.
 		If no --match is given the regex will be '(.*)'
-		Used as the second parameter to std::regex_replace with no flags.
+		If no --substitute is given this options is ignored.
+		Used as the second parameter to standard function 'std::regex_replace' with default flags.
 	-S --substitute <expression_to_substitute>
 		substitute expression used to determine the result filename of action. All selected filenames (not paths) will be affected by this option.
-		Used as the third parameter to std::regex_replace with no flags.
+		Used as the third parameter to standard function 'std::regex_replace' with default flags.
 	-r --recursive
-		do action for all subdirectories under selected directories.
+		Select files in all subdirectories under selected directories.
+		By default all files are selected including samples. 
+		Use --only_sfz and --regex to further filter selected files.
 	-o --only_sfz
-		Only select files with '.sfz' extension.
+		Only select files with '.sfz' extension. 
 	-L --follow_symlinks
 		Follow symlinks when reading directories.
 	-F --force_action
@@ -144,7 +151,7 @@ sfz_organizer [OPTION] ... [FILE] ...
 	6. sfz_organizer -c -M "SJO_" -S "LOL_" *.sfz lol/
 	Copy all files ending in '.sfz' in the current directory into directory 'lol' and change any filename that has string 'SJO_' for string 'LOL_'.
 		
-	6. sfz_organizer --move String*.sfz ../separate
+	7. sfz_organizer --move String*.sfz ../separate
 	Changes to a copy. Copy all files with form 'String*.sfz' in the current directory into directory '../separate'. It also copies all samples 
 	used by them keeping an equivalent tree structure. 
 		
