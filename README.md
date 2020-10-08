@@ -103,8 +103,8 @@ sfz_organizer [OPTION] ... [FILE] ...
 	2. The target for --copy or --move actions is determined in the following way:
 		If a --to directory is given it will be the target. All selected files will be copied or moved to that directoy.
 		If a --substitute option is given, target filenames will be determined by that option.
-		If just ONE file is selected in the command line the current directory will be the target.
-		If not --to directory, no --substitute option are given and MORE than one file is selected in the command line, the last one will be the target.
+		If just ONE file is selected in the command line the --to will be the target.
+		If no --to, no --substitute, no --recursive are given and MORE than one file is selected in the command line, the LAST one will be the target.
 		
 	3. A file is subject to change if it is selected or if it has a reference to a selected file. i.e. a sfz soundfont file that has a reference to a selected sample.
 	
@@ -155,11 +155,15 @@ sfz_organizer [OPTION] ... [FILE] ...
 	Changes to a copy. Copy all files with form 'String*.sfz' in the current directory into directory '../separate'. It also copies all samples 
 	used by them keeping an equivalent tree structure. 
 		
+	8. sfz_organizer -c -E "percu" -r --only_sfz -t ../per2/ -l | grep CONFLICT
+	Print all conflicts that would happen if a copy of all sfz soundfonts that match regex "percu" recursively under current directory into 
+	directory '../per2' is attempted.
+
 	
 </pre>
 </xmp>
  
 	
 # Status
-Still debuging. Use with care.
+Alpha stage. Use with care.
 

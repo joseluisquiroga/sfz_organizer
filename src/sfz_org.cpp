@@ -685,8 +685,8 @@ print_help(const zo_str_vec& args){
 	2. The target for --copy or --move actions is determined in the following way:
 		If a --to directory is given it will be the target. All selected files will be copied or moved to that directoy.
 		If a --substitute option is given, target filenames will be determined by that option.
-		If just ONE file is selected in the command line the current directory will be the target.
-		If not --to directory, no --substitute option are given and MORE than one file is selected in the command line, the last one will be the target.
+		If just ONE file is selected in the command line the --to will be the target.
+		If no --to, no --substitute, no --recursive are given and MORE than one file is selected in the command line, the LAST one will be the target.
 		
 	3. A file is subject to change if it is selected or if it has a reference to a selected file. i.e. a sfz soundfont file that has a reference to a selected sample.
 	
@@ -737,6 +737,10 @@ print_help(const zo_str_vec& args){
 	Changes to a copy. Copy all files with form 'String*.sfz' in the current directory into directory '../separate'. It also copies all samples 
 	used by them keeping an equivalent tree structure. 
 		
+	8. sfz_organizer -c -E "percu" -r --only_sfz -t ../per2/ -l | grep CONFLICT
+	Print all conflicts that would happen if a copy of all sfz soundfonts that match regex "percu" recursively under current directory into 
+	directory '../per2' is attempted.
+
 	)help", prg_nm.c_str(), prg_nm.c_str());
 	fprintf(stdout, "\n");
 }
@@ -970,14 +974,20 @@ zo_fname::print_actions(zo_orga& org, bool only_orig){
 		}
 		return;
 	}
+	if(only_orig){
+		fprintf(stdout, "'%s'\n", orig_pth.c_str());
+		return;
+	}
+	if((orig_pth != nxt_pth) && fs::exists(nxt_pth) && (org.pol == zo_policy::keep)){
+		fprintf(stdout, "KEEPING_EXISTING_FILE '%s'\n", nxt_pth.c_str());
+		return;
+	}
+	
 	bool is_mv = org.is_move();
 	zo_string act = (is_mv)?("MOVE_FILE"):("COPY_FILE");
 	zo_string cfl = (is_confl)?(" THAT_WAS_IN_CONFLICT"):("");
-	if(only_orig){
-		fprintf(stdout, "'%s'\n", orig_pth.c_str());
-	} else {
-		fprintf(stdout, "%s%s '%s' to '%s'\n", act.c_str(), cfl.c_str(), orig_pth.c_str(), nxt_pth.c_str());
-	}
+	fprintf(stdout, "%s%s '%s' to '%s'\n", act.c_str(), cfl.c_str(), orig_pth.c_str(), nxt_pth.c_str());
+	
 }
 
 void
@@ -1181,6 +1191,11 @@ zo_sfont::do_actions(zo_orga& org){
 	}
 	fs::create_directories(nxt.parent_path());
 	
+	if((get_orig() != nxt) && fs::exists(nxt) && (org.pol == zo_policy::keep)){
+		fprintf(stdout, "KEEPING_EXISTING_FILE '%s'\n", nxt.c_str());
+		return;
+	}
+	
 	bool is_mv = org.is_move();
 	zo_path tmp = org.get_temp_path();
 	prepare_tmp_file(tmp);
@@ -1206,6 +1221,11 @@ zo_sample::do_actions(zo_orga& org){
 		return;
 	}
 	fs::create_directories(nxt.parent_path());
+	
+	if((get_orig() != nxt) && fs::exists(nxt) && (org.pol == zo_policy::keep)){
+		fprintf(stdout, "KEEPING_EXISTING_FILE '%s'\n", nxt.c_str());
+		return;
+	}
 	
 	bool is_mv = org.is_move();
 	if(is_mv){
