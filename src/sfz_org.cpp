@@ -611,74 +611,74 @@ The purpose of %s is to move and copy sfz soundfonts while preserving consistenc
 ## Options:  
 ==========  
   
--l --list  
-	Just print what it would do without actualy doing it.  
--m --move  
-	move action. Rest of parameters will decide what and how.  
-	If the --to directory is not under of the --from directory the action becomes a --copy.  
--c --copy  
-	copy action. Rest of parameters will decide what and how.  
--p --purge  
-	purge action.  
-	moves all non utf8 files with '.sfz' ext to subdir "purged" in the --to directory.  
-	moves all sfz soundfonts with no valid sample references under the --from directory, to subdir "purged" in the --to directory.  
-	moves all samples with no sample references in sfz soundfonts under the --from directory, to subdir "purged" in the --to directory.  
-	Works on the whole --from directory (as if --recursive  and no files were selected).  
--a --add_sfz_ext  
-	add_sfz_ext action. Add the extention ".sfz" to selected files. Rest of parameters will decide what and how.  
-	Only does it to utf8 encoded files checking the first Kbyte and only if it does not end with the '.sfz' extension already.  
--N --normalize  
-	normalize action. moves all selected sfz sounfonts and samples (not directories) so that they do not have odd (non alphanumeric) characters.  
-	All non alphanumeric characters are replaced with _ (underscore).  
-	Conflicts are resolved before writing files by a counter just before each file extension, that increments until there is no conflict. 
-	Use --match and --substitute toghether with --move if more control is desired.  
--i --ignore <file>  
-	Do not select this file or anything under it if it is a directory.  
--d --hidden  
-	Read also hidden files.  
-	Any file or directory name that starts with '.' is considdered hidden and by default it is not read.  
--f --from <source_dir>  
-	Source directory.   
-	Consistency of action is only kept up to this directory, meaning:  
-		All sfz soundfonts and samples (referenced files by sfz files) subject to change MUST be under this directory.  
-	If no --from option is given the --from directory will be the current directory.  
--t --to <dest_dir>  
-	Destination directory.   
-	If no --to option is given the --to directory will be the same as the --from directory.  
--A --samples_too  
-	Copy samples too.  
-	In a  --copy, if the --to directory is under of the --from directory copy the samples too. By default it will only change the references in
-	copied sfz soundfonts to the existing samples (to keep reference consistency).  
--K --keep  
-	keep the destination file when it already exists.  
--P --replace  
-	replace the destination file when it already exists.  
--E --regex <regex_to_match>  
-	match regex to select files.   
-	All selected filenames (not paths) are filtered by this option. Only filenames matching this option will be selected.  
-	Used as the third parameter to standard function 'std::regex_search' with default flags.  
--M --match <regex_to_match>  
-	match regex used for substitution in selected filenames. All selected filenames (not paths) will be affected by this option.  
-	If no --match is given the regex will be '(.*)'  
-	If no --substitute is given this options is ignored.  
-	Used as the second parameter to standard function 'std::regex_replace' with default flags.  
--S --substitute <expression_to_substitute>  
-	substitute expression used to determine the result filename of action. All selected filenames (not paths) will be affected by this option.  
-	Used as the third parameter to standard function 'std::regex_replace' with default flags.  
--r --recursive  
-	Select files in all subdirectories under selected directories.  
-	By default all files are selected including samples.   
-	Use --only_sfz and --regex to further filter selected files.  
--o --only_sfz  
-	Only select files with '.sfz' extension.   
--L --follow_symlinks  
-	Follow symlinks when reading directories.  
--F --force_action  
-	Execute action solving all conflicts with different names.  
---skip_normalize  
-	Do not normalize names. Not recomended because it deactivates conflict solving.  
---help   
---version   
+	-l --list  
+		Just print what it would do without actualy doing it.  
+	-m --move  
+		move action. Rest of parameters will decide what and how.  
+		If the --to directory is not under of the --from directory the action becomes a --copy.  
+	-c --copy  
+		copy action. Rest of parameters will decide what and how.  
+	-p --purge  
+		purge action.  
+		moves all non utf8 files with '.sfz' ext to subdir "purged" in the --to directory.  
+		moves all sfz soundfonts with no valid sample references under the --from directory, to subdir "purged" in the --to directory.  
+		moves all samples with no sample references in sfz soundfonts under the --from directory, to subdir "purged" in the --to directory.  
+		Works on the whole --from directory (as if --recursive  and no files were selected).  
+	-a --add_sfz_ext  
+		add_sfz_ext action. Add the extention ".sfz" to selected files. Rest of parameters will decide what and how.  
+		Only does it to utf8 encoded files checking the first Kbyte and only if it does not end with the '.sfz' extension already.  
+	-N --normalize  
+		normalize action. moves all selected sfz sounfonts and samples (not directories) so that they do not have odd (non alphanumeric) characters.  
+		All non alphanumeric characters are replaced with _ (underscore).  
+		Conflicts are resolved before writing files by a counter just before each file extension, that increments until there is no conflict. 
+		Use --match and --substitute toghether with --move if more control is desired.  
+	-i --ignore <file>  
+		Do not select this file or anything under it if it is a directory.  
+	-d --hidden  
+		Read also hidden files.  
+		Any file or directory name that starts with '.' is considdered hidden and by default it is not read.  
+	-f --from <source_dir>  
+		Source directory.   
+		Consistency of action is only kept up to this directory, meaning:  
+			All sfz soundfonts and samples (referenced files by sfz files) subject to change MUST be under this directory.  
+		If no --from option is given the --from directory will be the current directory.  
+	-t --to <dest_dir>  
+		Destination directory.   
+		If no --to option is given the --to directory will be the same as the --from directory.  
+	-A --samples_too  
+		Copy samples too.  
+		In a  --copy, if the --to directory is under of the --from directory copy the samples too. By default it will only change the references in
+		copied sfz soundfonts to the existing samples (to keep reference consistency).  
+	-K --keep  
+		keep the destination file when it already exists.  
+	-P --replace  
+		replace the destination file when it already exists.  
+	-E --regex <regex_to_match>  
+		match regex to select files.   
+		All selected filenames (not paths) are filtered by this option. Only filenames matching this option will be selected.  
+		Used as the third parameter to standard function 'std::regex_search' with default flags.  
+	-M --match <regex_to_match>  
+		match regex used for substitution in selected filenames. All selected filenames (not paths) will be affected by this option.  
+		If no --match is given the regex will be '(.*)'  
+		If no --substitute is given this options is ignored.  
+		Used as the second parameter to standard function 'std::regex_replace' with default flags.  
+	-S --substitute <expression_to_substitute>  
+		substitute expression used to determine the result filename of action. All selected filenames (not paths) will be affected by this option.  
+		Used as the third parameter to standard function 'std::regex_replace' with default flags.  
+	-r --recursive  
+		Select files in all subdirectories under selected directories.  
+		By default all files are selected including samples.   
+		Use --only_sfz and --regex to further filter selected files.  
+	-o --only_sfz  
+		Only select files with '.sfz' extension.   
+	-L --follow_symlinks  
+		Follow symlinks when reading directories.  
+	-F --force_action  
+		Execute action solving all conflicts with different names.  
+	--skip_normalize  
+		Do not normalize names. Not recomended because it deactivates conflict solving.  
+	--help   
+	--version   
 
 ## Notes:  
 ========  
