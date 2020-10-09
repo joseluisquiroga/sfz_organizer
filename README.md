@@ -29,9 +29,9 @@ sfz_organizer [OPTION] ... [FILE] ...
 		copy action. Rest of parameters will decide what and how.
 	-p --purge
 		purge action. Rest of parameters will decide what and how.
-		moves all non utf8 files with '.sfz' ext to --to directory.
-		moves all sfz soundfonts with no valid sample references under the --from directory, to the --to directory.
-		moves all samples with no sample references in sfz soundfonts under the --from directory, to --to directory.
+		moves all non utf8 files with '.sfz' ext to subdir "purged" in the --to directory.
+		moves all sfz soundfonts with no valid sample references under the --from directory, to subdir "purged" in the --to directory.
+		moves all samples with no sample references in sfz soundfonts under the --from directory, to subdir "purged" in the --to directory.
 		Works on the whole --from directory (as if --recursive  and no files were selected). 
 	-a --add_sfz_ext
 		add_sfz_ext action. Add the extention ".sfz" to selected files. Rest of parameters will decide what and how.
@@ -129,6 +129,10 @@ sfz_organizer [OPTION] ... [FILE] ...
 	9. The default policy is --keep.
 	
 	10. If more than one action (--move, --copy, --purge, --add_sfz_ext, --normalize) is given, only the last one will be executed.
+	
+	11. The most common error is: 'Cannot open file ...' because of lack of permissions. Give the user write permissions.
+	
+	12. The name "purged" is reserved. A subdirectory under --from called "purged" is always ignored.
 	
 	Examples:
 	=========

@@ -249,7 +249,11 @@ is_text_file(zo_path pth){
 	std::ifstream istm;
 	istm.open(pth.c_str(), std::ios::binary);
 	if(! istm.good() || ! istm.is_open()){
-		throw sfz_exception(sfz_cannot_open, pth);
+		fprintf(stdout, "Cannot open file:'%s'\n", pth.c_str());
+		std::cerr << "Error: " << strerror(errno) << "\n\n";
+		exit(0);
+		//ZO_CK(false);
+		//throw sfz_exception(sfz_cannot_open, pth);
 	}
 	
 	istm.read((char*)ZO_BUFFER, ZO_BUFFER_SZ);
@@ -270,7 +274,11 @@ zo_sfont::get_samples(zo_orga& org){
 	zo_path fl_orig = fl->get_orig();
 	istm.open(fl_orig.c_str(), std::ios::binary);
 	if(! istm.good() || ! istm.is_open()){
-		throw sfz_exception(sfz_cannot_open, fl_orig);
+		fprintf(stdout, "Cannot open file:'%s'\n", fl_orig.c_str());
+		std::cerr << "Error: " << strerror(errno) << "\n\n";
+		exit(0);
+		//ZO_CK(false);
+		//throw sfz_exception(sfz_cannot_open, fl_orig);
 	}
 	
 	tot_spl_ref = 0;
@@ -611,9 +619,9 @@ print_help(const zo_str_vec& args){
 		copy action. Rest of parameters will decide what and how.
 	-p --purge
 		purge action. Rest of parameters will decide what and how.
-		moves all non utf8 files with '.sfz' ext to --to directory.
-		moves all sfz soundfonts with no valid sample references under the --from directory, to the --to directory.
-		moves all samples with no sample references in sfz soundfonts under the --from directory, to --to directory.
+		moves all non utf8 files with '.sfz' ext to subdir "purged" in the --to directory.
+		moves all sfz soundfonts with no valid sample references under the --from directory, to subdir "purged" in the --to directory.
+		moves all samples with no sample references in sfz soundfonts under the --from directory, to subdir "purged" in the --to directory.
 		Works on the whole --from directory (as if --recursive  and no files were selected). 
 	-a --add_sfz_ext
 		add_sfz_ext action. Add the extention ".sfz" to selected files. Rest of parameters will decide what and how.
@@ -711,6 +719,10 @@ print_help(const zo_str_vec& args){
 	9. The default policy is --keep.
 	
 	10. If more than one action (--move, --copy, --purge, --add_sfz_ext, --normalize) is given, only the last one will be executed.
+	
+	11. The most common error is: 'Cannot open file ...' because of lack of permissions. Give the user write permissions.
+	
+	12. The name "purged" is reserved. A subdirectory under --from called "purged" is always ignored.
 	
 	Examples:
 	=========
@@ -841,6 +853,7 @@ zo_orga::get_args(const zo_str_vec& args){
 		else if((ar == "-S") || (ar == "--substitute")){
 			it++; if(it == args.end()){ break; }
 			subst_str = *it;
+			has_subst = true;
 		}
 		else if((ar == "-r") || (ar == "--recursive")){
 			recursive = true;
@@ -931,7 +944,7 @@ zo_orga::get_args(const zo_str_vec& args){
 		fprintf(stdout, "Using regex_str '%s'\n", regex_str.c_str());
 	}
 	
-	if(! subst_str.empty()){
+	if(has_subst){
 		match_rx = match_str;
 		fprintf(stdout, "Using match_str '%s'\n", match_str.c_str());
 		fprintf(stdout, "Using subst_str '%s'\n", subst_str.c_str());
@@ -1258,13 +1271,21 @@ zo_sfont::prepare_tmp_file(const zo_path& tmp_pth){
 	std::ifstream src;
 	src.open(get_orig().c_str(), std::ios::binary);
 	if(! src.good() || ! src.is_open()){
-		throw sfz_exception(sfz_cannot_open, get_orig());
+		fprintf(stdout, "Cannot open file:'%s'\n", get_orig().c_str());
+		std::cerr << "Error: " << strerror(errno) << "\n\n";
+		exit(0);
+		//ZO_CK(false);
+		//throw sfz_exception(sfz_cannot_open, get_orig());
 	}
 	std::ofstream dst;
 	zo_string tmp = tmp_pth;
 	dst.open(tmp.c_str(), std::ios::binary);
 	if(! dst.good() || ! dst.is_open()){
-		throw sfz_exception(sfz_cannot_open, tmp);
+		fprintf(stdout, "Cannot open file:'%s'\n", tmp.c_str());
+		std::cerr << "Error: " << strerror(errno) << "\n\n";
+		exit(0);
+		//ZO_CK(false);
+		//throw sfz_exception(sfz_cannot_open, tmp);
 	}
 	
 	auto it = all_ref.begin();
@@ -1295,6 +1316,8 @@ zo_sfont::prepare_tmp_file(const zo_path& tmp_pth){
 			continue;
 		}
 		if(rf->num_line < lnum){
+			fprintf(stdout, "INTERNAL ERROR !! (rf->num_line < lnum) PREPARING:'%s'. Please send a bug report with an small example\n", tmp.c_str());
+			ZO_CK(false);
 			throw sfz_exception(sfz_read_1_and_2_differ, get_orig());
 		}
 			
@@ -1396,7 +1419,7 @@ zo_orga::calc_target(bool had_dir_to){
 		return true;
 	}
 	bool lst_is_good_dir = (lst_exists && lst_is_dir && ! recursive);
-	if(! subst_str.empty() && ! lst_is_good_dir){
+	if(has_subst && ! lst_is_good_dir){
 		return true;
 	}
 	if(f_names.empty()){
@@ -1550,7 +1573,7 @@ zo_fname::calc_next(zo_orga& org, bool cmd_sel, bool can_mv){
 		dr_to = dr_to / "purged";
 	}
 	
-	if(! org.subst_str.empty() && can_mv){
+	if(org.has_subst && can_mv){
 		nm = std::regex_replace(nm, org.match_rx, org.subst_str);
 	}
 	

@@ -474,6 +474,7 @@ public:
 	bool hidden_too = false;
 	bool skip_normalize = false;
 	bool force_action = false;
+	bool has_subst = false;
 	
 	zo_policy pol{zo_policy::keep}; // replace | keep options
 	
