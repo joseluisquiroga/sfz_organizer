@@ -236,10 +236,11 @@ static inline void trim(std::string &s) {
 }
 
 zo_path
-fix_ref_path(const zo_string& rpth, const zo_path& fpth, std::error_code& ec){
+fix_ref_path(const zo_string& rpth, const zo_path& fpth, std::error_code& ec, bool& fixed){
 	zo_path pnt = fpth.parent_path();
 	zo_string fx = rpth;
 	std::replace(fx.begin(), fx.end(), '\\', '/');
+	fixed = (rpth != fx);
 	zo_path fxp = fs::canonical(fs::absolute(fx, pnt), ec);
 	return fxp;
 }
@@ -331,7 +332,8 @@ zo_sfont::get_samples(zo_orga& org){
 		//fprintf(stdout, "lref:'%s'\n", lref.c_str()); // dbg_prt
 		
 		auto ec = std::error_code{};
-		zo_path fx_ref = fix_ref_path(lref, fl_orig, ec);
+		bool fixed = false;
+		zo_path fx_ref = fix_ref_path(lref, fl_orig, ec, fixed);
 
 		//fprintf(stdout, "lprefix:'%s'\n", lprefix.c_str()); // dbg_prt
 		//fprintf(stdout, "fx_ref:'%s'\n", fx_ref.c_str()); // dbg_prt
@@ -360,6 +362,7 @@ zo_sfont::get_samples(zo_orga& org){
 		} else {
 			nw_ref->prefix = lprefix;
 			nw_ref->suffix = lsuffix;
+			nw_ref->fixed = fixed;
 		}
 	}
 	
@@ -1531,7 +1534,14 @@ zo_orga::organizer_main(const zo_str_vec& args){
 		fprintf(stderr, "Just_printing_actions\n");
 		print_actions(org);
 		if(tot_conflict > 0){
+			if(! all_conflict.empty()){
+				fprintf(stderr, "Conflicts would be solved with the following names\n");
+				for(auto nm : all_conflict){
+					fprintf(stderr, "%s\n", nm.c_str());
+				}
+			}
 			fprintf(stderr, "Found %ld conflicts. Use --force_action to execute\n", tot_conflict);
+			
 		}
 		fprintf(stderr, "Doing_nothing.\n");
 		return;
@@ -1598,6 +1608,7 @@ zo_fname::calc_next(zo_orga& org, bool cmd_sel, bool can_mv){
 		
 		nx_pth = dr_to / rel_dir / nm;
 		
+		org.all_conflict.insert(nx_pth);
 		it = org.all_unique_nxt.find(nx_pth);
 	}
 	ZO_CK(it == org.all_unique_nxt.end());
@@ -1630,7 +1641,7 @@ zo_ref::sf_name(){
 
 bool
 zo_ref::is_same(){
-	bool sm = prefix.empty() && suffix.empty() && bad_pth.empty();
+	bool sm = prefix.empty() && suffix.empty() && bad_pth.empty() && ! fixed;
 	ZO_CK(sref != zo_null);
 	return (sm && sref->is_same() && sf_name().is_same());
 }

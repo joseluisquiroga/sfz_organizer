@@ -168,5 +168,5 @@ directory '../per2' is attempted.
 	
 	
 # Status
-Alpha stage. Use with care.
+sfz_organizer 0.1
 

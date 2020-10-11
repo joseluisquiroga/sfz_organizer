@@ -188,6 +188,7 @@ public:
 	zo_sample_pt	sref = zo_null;
 	zo_string 		suffix{""};
 	zo_string 		bad_pth{""};
+	bool			fixed{false};
 	
 	zo_ref(zo_sfont_pt fl, long ln_num, zo_sample_pt rf){
 		ZO_CK(fl != zo_null);
@@ -370,6 +371,7 @@ public:
 	zo_sample_map 		all_selected_spl;
 	
 	zo_conflict_map		all_unique_nxt;
+	zo_file_set			all_conflict;
 	long 				tot_conflict{0};
 
 	zo_sample_pt 		bad_spl{zo_null};
