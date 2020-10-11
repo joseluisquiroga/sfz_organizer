@@ -357,8 +357,8 @@ zo_sfont::get_samples(zo_orga& org){
 		fl->all_ref.push_back(nw_ref);
 		
 		if(ec){
-			nw_ref->bad_pth = lref;
-			fprintf(stderr, "bad_ref:'%s' in file %s\n", lref.c_str(), fl_orig.c_str());
+			nw_ref->bad_pth = ln;
+			fprintf(stderr, "bad_ref_line %ld:'%s' in file %s\n", lnum, ln.c_str(), fl_orig.c_str());
 		} else {
 			nw_ref->prefix = lprefix;
 			nw_ref->suffix = lsuffix;
@@ -1014,7 +1014,8 @@ zo_ref::print_actions(zo_orga& org){
 	ZO_CK(org.oper != zo_action::purge);
 	fprintf(stdout, "----------\n");
 	if(! bad_pth.empty()){
-		fprintf(stdout, "BAD_REFERENCE_SKIPPED '%s'\n", bad_pth.c_str());
+		zo_string sf_pth = owner->get_orig();
+		fprintf(stdout, "BAD_REF_line %ld:'%s' in file %s SKIPPED\n", num_line, bad_pth.c_str(), sf_pth.c_str());
 		return;
 	}
 	fprintf(stdout, "original_sample: %s\n", get_orig().c_str());

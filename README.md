@@ -169,4 +169,9 @@ directory '../per2' is attempted.
 	
 # Status
 sfz_organizer 0.1
+Only works for sfz v1. 
+
+# Missing Features.
+No sfz v2 opcodes yet (#include or default_path).
+
 
