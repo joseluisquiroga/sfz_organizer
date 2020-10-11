@@ -405,7 +405,7 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 		return;
 	}
 
-	if(! regex_str.empty()){
+	if(! regex_str.empty() && ! only_with_ref){
 		zo_string nm = apth.filename();
 		std::smatch fname_matches;
 		if(! regex_search(nm, fname_matches, select_rx)){
