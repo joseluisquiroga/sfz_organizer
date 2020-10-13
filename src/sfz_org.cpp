@@ -85,14 +85,12 @@ set_num_name(zo_string& nm, long val){
 
 zo_string ZO_SFZ_EXT = ".sfz";
 zo_string ZO_SAMPLE_STR = "sample";
-zo_string ZO_SAMPLE_LINE_PATTERN_STR = R"(sample\s*=)";
-zo_string ZO_OPCODE_PATTERN_STR = R"((\w*)\s*=)";
 
 constexpr long ZO_BUFFER_SZ = 1024;
 unsigned char ZO_BUFFER[ZO_BUFFER_SZ];
 
-std::regex ZO_SAMPLE_LINE_PATTERN{ZO_SAMPLE_LINE_PATTERN_STR.c_str()};
-std::regex ZO_OPCODE_PATTERN{ZO_OPCODE_PATTERN_STR.c_str()};
+std::regex ZO_SAMPLE_LINE_PATTERN{R"(sample\s*=)"};
+std::regex ZO_OPCODE_PATTERN{R"((\w*)\s*=)"};
 
 zo_path 
 find_relative(const zo_path& pth, const zo_path& base, std::error_code& ec, bool do_checks = true){
@@ -437,7 +435,11 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 			normal_sfz = sf->is_txt;
 		}
 		if(is_nw && normal_sfz){
-			sf->get_samples(org);
+			if(do_old){
+				sf->get_samples(org);
+			} else {
+				sf->get_opcodes(org);
+			}
 		}
 		bool has_ref = ! sf->all_ref.empty();
 		if(! only_with_ref || has_ref){
@@ -582,18 +584,38 @@ int test_rx(int argc, char* argv[]){
 	
 	fprintf(stdout, "reading %s\n", f_nam.c_str());
 	
+	bool do_old = false;
+	if(argc > 2){
+		do_old = true;
+	}
+	
 	auto fpth = zo_path{fs::canonical(f_nam)};
 	//auto dpth = zo_path{fs::canonical(".")};
 	auto fl = make_sfont_pt(fpth);
 	zo_orga org;
-	
-	fl->get_samples(org);
+
+	if(do_old){
+		fl->get_samples(org);
+	} else {
+		fl->get_opcodes(org);
+	}
 	for(zo_ref_pt ii : fl->all_ref){ 
 		zo_path orig = ii->get_orig();
 		//ZO_CK(orig.is_absolute());
 		//zo_path cano = fs::canonical(orig);
-		fprintf(stdout, "\t'%s'\n\t'%s'\n\t'%s'\n\t'%s'\n=======================\n", 
+		fprintf(stdout, "=======================\n\tpfx:'%s'\n\torg:'%s'\n\torel:'%s'\n\tsfx:'%s'\n", 
 				ii->prefix.c_str(), ii->get_orig().c_str(), ii->get_orig_rel().c_str(), ii->suffix.c_str()); 
+		if(ii->ctrl != zo_null){
+			zo_control_path_pt ctl = ii->ctrl;
+			fprintf(stdout, "\t-------default_path:\n\tdpfx:'%s'\n\tdpth:'%s'\n\tdsfx:'%s'\n", 
+				ctl->prefix.c_str(), ctl->def_path.c_str(), ctl->suffix.c_str()); 
+		}
+	}
+
+	if(do_old){
+		fprintf(stdout, "GET_SAMPLES_DONE\n");
+	} else {
+		fprintf(stdout, "GET_OPCODES_DONE\n");
 	}
 
 	auto ff = std::make_shared<zo_sfont>(fpth);
@@ -875,6 +897,9 @@ zo_orga::get_args(const zo_str_vec& args){
 		}
 		else if(ar == "--skip_normalize"){
 			skip_normalize = true;
+		}
+		else if(ar == "--old"){
+			do_old = true;
 		}
 		else if(ar == "--help"){
 			print_help(args);
@@ -1281,8 +1306,6 @@ zo_sfont::prepare_tmp_file(const zo_path& tmp_pth){
 		fprintf(stdout, "Cannot open file:'%s'\n", get_orig().c_str());
 		std::cerr << "Error: " << strerror(errno) << "\n\n";
 		exit(0);
-		//ZO_CK(false);
-		//throw sfz_exception(sfz_cannot_open, get_orig());
 	}
 	std::ofstream dst;
 	zo_string tmp = tmp_pth;
@@ -1291,8 +1314,6 @@ zo_sfont::prepare_tmp_file(const zo_path& tmp_pth){
 		fprintf(stdout, "Cannot open file:'%s'\n", tmp.c_str());
 		std::cerr << "Error: " << strerror(errno) << "\n\n";
 		exit(0);
-		//ZO_CK(false);
-		//throw sfz_exception(sfz_cannot_open, tmp);
 	}
 	
 	auto it = all_ref.begin();
@@ -1646,3 +1667,175 @@ zo_ref::is_same(){
 	ZO_CK(sref != zo_null);
 	return (sm && sref->is_same() && sf_name().is_same());
 }
+
+zo_string ZO_COMMENT_STR = "//";
+zo_string ZO_CONTROL_STR = "<control>";
+zo_string ZO_DEFAULT_PATH_STR = "default_path";
+
+std::regex ZO_PATH_LINE_PATTERN{R"((sample|default_path)\s*=)"};
+std::regex ZO_GEN_OPCODE_PATTERN{R"((\w*)\s*=)"};
+
+bool
+fix_seps_path(zo_string& pth){
+	zo_string old = pth;
+	std::replace(pth.begin(), pth.end(), '\\', '/');
+	return (pth != old);
+}
+
+void
+zo_sfont::get_opcodes(zo_orga& org){
+	zo_sfont_pt fl = this;
+	std::ifstream istm;
+	zo_path fl_orig = fl->get_orig();
+	istm.open(fl_orig.c_str(), std::ios::binary);
+	if(! istm.good() || ! istm.is_open()){
+		fprintf(stdout, "Cannot open file:'%s'\n", fl_orig.c_str());
+		std::cerr << "Error: " << strerror(errno) << "\n\n";
+		exit(0);
+		//ZO_CK(false);
+		//throw sfz_exception(sfz_cannot_open, fl_orig);
+	}
+	
+	tot_spl_ref = 0;
+	
+	std::smatch sample_matches;
+	std::smatch opcode_matches;
+	long lnum = 0;
+	zo_string ln;
+	std::size_t pos_str;
+	zo_control_path_pt curr_ctl = zo_null;
+	for(;getline(istm, ln);){
+		lnum++;
+		
+		zo_string cmmt = "";
+		pos_str = ln.find(ZO_COMMENT_STR);
+		if(pos_str != std::string::npos){
+			cmmt = ln.substr(pos_str);
+			//fprintf(stderr, "comment %ld:%s\n", lnum, cmmt.c_str()); // dbg_prt
+			//fprintf(stderr, "before_comment %ld:%s\n", lnum, ln.c_str()); // dbg_prt
+			ln = ln.substr(0, pos_str);
+			//fprintf(stderr, "AFTER_COMMENT %ld:%s\n", lnum, ln.c_str()); // dbg_prt
+		}
+		pos_str = ln.find(ZO_CONTROL_STR);
+		if(pos_str != std::string::npos){
+			curr_ctl = make_control_pt();
+			curr_ctl->num_line_ctl = lnum;
+			all_ctl.push_back(curr_ctl);
+			continue;
+		}
+		
+		if(! regex_search(ln, opcode_matches, ZO_PATH_LINE_PATTERN)){
+			continue;
+		}
+		
+		//fprintf(stdout, "> %ld:%s\n", lnum, ln.c_str()); // dbg_prt
+		zo_string lprefix = "";
+		zo_string lref = "";
+		zo_string lsuffix = "";
+		
+		zo_string opcod = ln;
+		bool is_sample = false;
+		bool is_ctl_pth = false;
+		
+		for(long aa = 0; aa < (long)opcode_matches.size(); aa++){
+			zo_string m0 = opcode_matches[aa];
+			//fprintf(stdout, "OPCODE_+%ld:%s\n", aa, m0.c_str()); // dbg_prt
+			if(m0 == ZO_SAMPLE_STR){
+				is_sample = true;
+			}
+			if(m0 == ZO_DEFAULT_PATH_STR){
+				is_ctl_pth = true;
+			}
+		}
+		lprefix = opcode_matches.prefix().str();
+		opcod = opcode_matches.suffix().str();
+		
+		ZO_CK(is_sample || is_ctl_pth);
+		
+		if(regex_search(opcod, opcode_matches, ZO_GEN_OPCODE_PATTERN)){
+			opcod = opcode_matches.prefix().str();
+			zo_string m0 = opcode_matches[0];
+			lsuffix = m0 + opcode_matches.suffix().str();
+			//fprintf(stdout, "SUFFIX_%s\n", m0.c_str()); // dbg_prt
+		}
+		lref = opcod;
+		trim(lref);
+		
+		lsuffix += cmmt;
+		
+		bool fixed = fix_seps_path(lref);
+		//fprintf(stdout, "lref:'%s'\n", lref.c_str()); // dbg_prt
+
+		//fprintf(stdout, "lprefix:'%s'\n", lprefix.c_str()); // dbg_prt
+		//fprintf(stdout, "lsuffix:'%s'\n", lsuffix.c_str()); // dbg_prt
+		
+		if(is_sample){
+			if((curr_ctl != zo_null) && ! curr_ctl->def_path.empty()){
+				ZO_CK(! all_ctl.empty());
+				ZO_CK(all_ctl.back() == curr_ctl);
+				lref = curr_ctl->def_path + lref;
+			}
+			
+			auto ec = std::error_code{};
+			
+			zo_path pnt_fl = fl_orig.parent_path();
+			zo_path fx_pth = fs::canonical(fs::absolute(lref, pnt_fl), ec);
+			//fprintf(stdout, "fx_pth:'%s'\n", fx_pth.c_str()); // dbg_prt
+			
+			bool is_nw = false;
+			zo_sample_pt spl = zo_null;
+			if(ec){
+				spl = org.bad_spl;
+			} else {
+				spl = org.get_read_sample(fx_pth, is_nw);
+				ZO_CK(spl->get_orig() == fx_pth);
+				org.get_selected_sample(fx_pth, spl, is_nw, org.samples_too);
+			}
+			ZO_CK(spl != zo_null);
+			tot_spl_ref++;
+			
+			spl->all_bk_ref[fl_orig] = fl;
+			
+			auto nw_ref = make_ref_pt(fl, lnum, spl);
+			fl->all_ref.push_back(nw_ref);
+			
+			if(ec){
+				nw_ref->bad_pth = ln;
+				fprintf(stderr, "bad_ref_line %ld:'%s' in file %s\n", lnum, ln.c_str(), fl_orig.c_str());
+			} else {
+				nw_ref->prefix = lprefix;
+				nw_ref->suffix = lsuffix;
+				nw_ref->fixed = fixed;
+				if(curr_ctl != zo_null){
+					ZO_CK(all_ctl.back() == curr_ctl);
+					nw_ref->ctrl = curr_ctl;
+				}
+			}
+		}
+		
+		if(is_ctl_pth){
+			bool ctl_err = false;
+			if(! ctl_err && all_ctl.empty()){
+				ZO_CK(curr_ctl == zo_null);
+				fprintf(stderr, "bad_default_path_line (NOT_IN_CONTROL_HEADER) %ld:'%s' in file %s\n", lnum, ln.c_str(), fl_orig.c_str());
+				ctl_err = true;
+			} 
+			if(! ctl_err){
+				auto lst_ctl = all_ctl.back();
+				ZO_CK(lst_ctl != zo_null);
+				ZO_CK(lst_ctl == curr_ctl);
+				if(! lst_ctl->def_path.empty()){
+					fprintf(stderr, "bad_default_path_line (ALREADY_HAS_DEFAULT_PATH) %ld:'%s' in file %s\n", lnum, ln.c_str(), fl_orig.c_str());
+				} else {
+					lst_ctl->num_line = lnum;
+					lst_ctl->prefix = lprefix;
+					lst_ctl->def_path = lref;
+					lst_ctl->suffix = lsuffix;
+					lst_ctl->fixed = fixed;
+				}
+			}
+		}
+	}
+	
+}
+

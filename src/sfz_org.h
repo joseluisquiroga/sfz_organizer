@@ -88,6 +88,7 @@ using zo_str_vec = std::vector<std::string>;
 
 using zo_path = fs::path;
 
+class zo_control_path;
 class zo_ref;
 class zo_sfont;
 class zo_sample;
@@ -154,6 +155,7 @@ is_move_oper(zo_action act){
 	return false;
 }
 
+using zo_control_path_pt = zo_control_path*;
 using zo_ref_pt = zo_ref*;
 using zo_sfont_pt = zo_sfont*;
 using zo_sample_pt = zo_sample*;
@@ -175,6 +177,25 @@ public:
 	}
 };
 
+class zo_control_path {
+	zo_control_path(zo_control_path& rr) = delete;
+	zo_control_path(zo_control_path&& rr) = delete;
+	zo_control_path& operator = (const zo_control_path& rr) = delete;
+	zo_control_path& operator = (zo_control_path&& rr) = delete;
+
+public:
+	long			num_line_ctl{ZO_INVALID_LINE_NUM};
+	long			num_line{ZO_INVALID_LINE_NUM};
+	zo_string 		prefix{""};
+	zo_string 		def_path{""};
+	zo_string 		suffix{""};
+	bool			fixed{false};
+	
+	zo_control_path(){}
+	~zo_control_path(){}
+	
+};
+
 class zo_ref {
 	zo_ref(zo_ref& rr) = delete;
 	zo_ref(zo_ref&& rr) = delete;
@@ -182,13 +203,16 @@ class zo_ref {
 	zo_ref& operator = (zo_ref&& rr) = delete;
 
 public:
-	zo_sfont_pt		owner = zo_null;
+	zo_sfont_pt			owner = zo_null;
+	zo_control_path_pt	ctrl = zo_null;
+	
 	long			num_line{ZO_INVALID_LINE_NUM};
 	zo_string 		prefix{""};
 	zo_sample_pt	sref = zo_null;
 	zo_string 		suffix{""};
-	zo_string 		bad_pth{""};
 	bool			fixed{false};
+
+	zo_string 		bad_pth{""};
 	
 	zo_ref(zo_sfont_pt fl, long ln_num, zo_sample_pt rf){
 		ZO_CK(fl != zo_null);
@@ -219,6 +243,7 @@ public:
 	void print_actions(zo_orga& org);
 };
 
+using zo_pth_vec = std::vector<zo_control_path_pt>;
 using zo_ref_vec = std::vector<zo_ref_pt>;
 
 class zo_sfont {
@@ -231,6 +256,7 @@ public:
 	zo_fname	fpth;
 	bool 		did_it{false};
 	zo_ref_vec	all_ref;
+	zo_pth_vec	all_ctl;
 	
 	bool 		is_txt{false};
 	long 		tot_spl_ref{0};
@@ -258,6 +284,7 @@ public:
 	bool is_same();
 	
 	void get_samples(zo_orga& org);
+	void get_opcodes(zo_orga& org);
 	
 	void print_actions(zo_orga& org);	
 	void do_actions(zo_orga& org);
@@ -315,6 +342,13 @@ public:
 	void prepare_copy_or_move(zo_orga& org);
 };
 
+
+inline 
+zo_control_path_pt
+make_control_pt(){
+	return new zo_control_path();
+	//return std::make_shared<zo_control_path>();
+}
 
 inline 
 zo_ref_pt
@@ -477,6 +511,7 @@ public:
 	bool skip_normalize = false;
 	bool force_action = false;
 	bool has_subst = false;
+	bool do_old = false;
 	
 	zo_policy pol{zo_policy::keep}; // replace | keep options
 	
