@@ -190,9 +190,11 @@ public:
 	zo_string 		def_path{""};
 	zo_string 		suffix{""};
 	bool			fixed{false};
-	
+
 	zo_control_path(){}
 	~zo_control_path(){}
+	
+	void write_default_path(std::ofstream& dst);
 	
 };
 
@@ -290,6 +292,7 @@ public:
 	void do_actions(zo_orga& org);
 	void prepare_normalize(zo_orga& org);
 	void prepare_tmp_file(const zo_path& tmp_pth);
+	void prepare_sfz_file(const zo_path& tmp_pth);
 	
 	void prepare_add_sfz_ext(zo_orga& org);
 	void prepare_purge(zo_orga& org);
@@ -505,6 +508,7 @@ public:
 	bool just_list = false; // list option
 	bool recursive = false; // recursive option
 	bool only_sfz = false; // recursive option
+	bool only_samples = false; // recursive option
 	bool follw_symlk = false;
 	bool samples_too = false;
 	bool hidden_too = false;

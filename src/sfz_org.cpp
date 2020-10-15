@@ -436,6 +436,7 @@ zo_orga::read_file(const zo_path& pth, const zo_ftype ft, const bool only_with_r
 		}
 		if(is_nw && normal_sfz){
 			if(do_old){
+				ZO_CK(false);
 				sf->get_samples(org);
 			} else {
 				sf->get_opcodes(org);
@@ -531,7 +532,9 @@ zo_orga::read_selected(){
 		read_files(f_names, zo_ftype::sample);
 	}
 	
-	read_files(f_names, zo_ftype::soundfont);
+	if(! only_samples){
+		read_files(f_names, zo_ftype::soundfont);
+	}
 	
 	if(adding_ext){
 		return;
@@ -700,6 +703,8 @@ The purpose of %s is to move and copy sfz soundfonts while preserving consistenc
 		Follow symlinks when reading directories.  
 	-F --force_action  
 		Execute action solving all conflicts with different names.  
+	--only_samples  
+		Only select files without '.sfz' extension.   
 	--skip_normalize  
 		Do not normalize names. Not recomended because it deactivates conflict solving.  
 	--help   
@@ -894,6 +899,9 @@ zo_orga::get_args(const zo_str_vec& args){
 		}
 		else if((ar == "-F") || (ar == "--force_action")){
 			force_action = true;
+		}
+		else if(ar == "--only_samples"){
+			only_samples = true;
 		}
 		else if(ar == "--skip_normalize"){
 			skip_normalize = true;
@@ -1243,7 +1251,12 @@ zo_sfont::do_actions(zo_orga& org){
 	
 	bool is_mv = org.is_move();
 	zo_path tmp = org.get_temp_path();
-	prepare_tmp_file(tmp);
+	if(org.do_old){
+		ZO_CK(false);
+		prepare_tmp_file(tmp);
+	} else {
+		prepare_sfz_file(tmp);
+	}
 	if(is_mv){
 		fs::remove(get_orig());
 	}
@@ -1616,7 +1629,7 @@ zo_fname::calc_next(zo_orga& org, bool cmd_sel, bool can_mv){
 	
 	zo_last_confl_pt the_cfl = zo_null;
 	auto it = org.all_unique_nxt.find(nx_pth);
-	if(it != org.all_unique_nxt.end()){
+	while(it != org.all_unique_nxt.end()){
 		org.tot_conflict++;
 		is_confl = true;
 		if(org.skip_normalize){
@@ -1633,7 +1646,13 @@ zo_fname::calc_next(zo_orga& org, bool cmd_sel, bool can_mv){
 		org.all_conflict.insert(nx_pth);
 		it = org.all_unique_nxt.find(nx_pth);
 	}
-	ZO_CK(it == org.all_unique_nxt.end());
+	ZO_CK_PRT((it == org.all_unique_nxt.end()), 
+			  "'%s' = '%s' / '%s' / '%s'\n", 
+				((zo_string)nx_pth).c_str(), 
+				((zo_string)dr_to).c_str(), 
+				((zo_string)rel_dir).c_str(),
+				nm.c_str()
+			 );
 	
 	if(the_cfl == zo_null){
 		the_cfl = make_last_confl_pt();
@@ -1774,6 +1793,7 @@ zo_sfont::get_opcodes(zo_orga& org){
 				ZO_CK(! all_ctl.empty());
 				ZO_CK(all_ctl.back() == curr_ctl);
 				lref = curr_ctl->def_path + lref;
+				fixed = true;
 			}
 			
 			auto ec = std::error_code{};
@@ -1837,5 +1857,91 @@ zo_sfont::get_opcodes(zo_orga& org){
 		}
 	}
 	
+}
+
+void
+zo_sfont::prepare_sfz_file(const zo_path& tmp_pth){
+	if(all_ref.empty()){
+		fprintf(stdout, "JUST_COPY_FILE. all_ref.empty(). %s\n", get_orig().c_str()); // dbg_prt
+		fs::copy(get_orig(), tmp_pth);
+		return;
+	}
+	
+	std::ifstream src;
+	src.open(get_orig().c_str(), std::ios::binary);
+	if(! src.good() || ! src.is_open()){
+		fprintf(stdout, "Cannot open file:'%s'\n", get_orig().c_str());
+		std::cerr << "Error: " << strerror(errno) << "\n\n";
+		exit(0);
+	}
+	std::ofstream dst;
+	zo_string tmp = tmp_pth;
+	dst.open(tmp.c_str(), std::ios::binary);
+	if(! dst.good() || ! dst.is_open()){
+		fprintf(stdout, "Cannot open file:'%s'\n", tmp.c_str());
+		std::cerr << "Error: " << strerror(errno) << "\n\n";
+		exit(0);
+	}
+	
+	auto it_ctl = all_ctl.begin();
+	auto it_ref = all_ref.begin();
+	
+	std::smatch opcode_matches;
+	long lnum = 0;
+	zo_string ln;
+	for(;getline(src, ln);){
+		lnum++;
+		
+		bool end_of_ctls = (it_ctl == all_ctl.end());
+		bool end_of_refs = (it_ref == all_ref.end());
+		if(end_of_ctls && end_of_refs){
+			dst << ln << '\n';
+			//fprintf(stdout, "SAME_LINE.(end_of_ctls && end_of_refs). %s\n", ln.c_str()); // dbg_prt
+			continue;
+		}
+		zo_control_path_pt ctl = zo_null;
+		zo_ref_pt ref = zo_null;
+		if(! end_of_ctls){
+			ctl = *it_ctl;
+		}
+		if(! end_of_refs){
+			ref = *it_ref;
+		}
+		bool is_ctl_ln = ((ctl != zo_null) && (ctl->num_line == lnum));
+		bool is_ref_ln = ((ref != zo_null) && (ref->num_line == lnum));
+		ZO_CK(! (is_ctl_ln && is_ref_ln));
+		
+		if(! is_ctl_ln && ! is_ref_ln){
+			dst << ln << '\n';
+			//fprintf(stdout, "SAME_LINE.(! is_ctl_ln && ! is_ref_ln). %s\n", ln.c_str()); // dbg_prt
+			continue;
+		}
+
+		ZO_CK(regex_search(ln, opcode_matches, ZO_PATH_LINE_PATTERN));
+		
+		if(is_ctl_ln){
+			ctl->write_default_path(dst);
+			it_ctl++;
+		}
+		if(is_ref_ln){
+			ref->write_ref(dst, ln);
+			it_ref++;
+		}
+	}
+	
+}
+
+void 
+zo_control_path::write_default_path(std::ofstream& dst){
+	if(! prefix.empty()){
+		//fprintf(stdout, "WRITING_PREFIX_DEF_PTH. %s\n", prefix.c_str()); // dbg_prt
+		dst << prefix << '\n';
+	}
+	//fprintf(stdout, "WRITING_COMMENT_OF_OLD_DEF_PTH. %s\n", def_path.c_str()); // dbg_prt
+	dst << "// old_default_path:" << def_path << " //Commented by sfz_organizer to keep consistency.\n";
+	if(! suffix.empty()){
+		//fprintf(stdout, "WRITING_SUFIX_DEF_PTH. %s\n", suffix.c_str()); // dbg_prt
+		dst << suffix << '\n';
+	}
 }
 

@@ -13,7 +13,6 @@ make
 # Description
 
 
-
 sfz_organizer [OPTION] ... [FILE] ...  
 The purpose of sfz_organizer is to move and copy sfz soundfonts while preserving consistency of any referenced sample within them.  
 
@@ -84,6 +83,8 @@ The purpose of sfz_organizer is to move and copy sfz soundfonts while preserving
 		Follow symlinks when reading directories.  
 	-F --force_action  
 		Execute action solving all conflicts with different names.  
+	--only_samples  
+		Only select files without '.sfz' extension.   
 	--skip_normalize  
 		Do not normalize names. Not recomended because it deactivates conflict solving.  
 	--help   
@@ -169,9 +170,12 @@ directory '../per2' is attempted.
 	
 # Status
 sfz_organizer 0.1
-Only works for sfz v1. 
+
+# Warning.
+In sfz_v2 files the 'default_path' opcode is commented and included in the sample paths.
 
 # Missing Features.
-No sfz v2 opcodes yet (#include or default_path).
+No #include opcode.
+
 
 
